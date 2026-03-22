@@ -1,0 +1,12 @@
+{
+  "name": "weixin",
+  "description": "WeChat (微信) channel for Claude Code — messaging bridge via iLink Bot API with built-in access control.",
+  "version": "0.1.0",
+  "keywords": [
+    "weixin",
+    "wechat",
+    "messaging",
+    "channel",
+    "mcp"
+  ]
+}

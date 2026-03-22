@@ -1,0 +1,10 @@
+node_modules/
+bun.lock
+package-lock.json
+
+# skills tool auto-generated dirs
+.agents/
+.agent/
+.claude/
+.factory/
+skills-lock.json
