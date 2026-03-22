@@ -42,33 +42,55 @@ Read both state files and give the user a complete picture:
 
 ### `login` — QR code login
 
-Run the login script. It handles the full interactive flow: fetch QR code,
-render in terminal, show direct link, poll for scan, save credentials, and
-auto-add the scanner to the allowlist.
+This is a TWO-STEP process. The scripts are in the plugin install directory.
+Find the plugin root by looking for the `login-qr.ts` file:
 
-```bash
-bun "${CLAUDE_PLUGIN_ROOT}/login.ts"
+```
+~/.claude/plugins/cache/m1heng-plugins/weixin/*/login-qr.ts
 ```
 
-If `CLAUDE_PLUGIN_ROOT` is not set (e.g. running outside plugin system),
-find `login.ts` relative to the skill file or in the project root.
+Use `ls` to resolve the wildcard and get the actual path.
 
-The script will:
-1. Fetch a QR code from `https://ilinkai.weixin.qq.com/`
-2. Render it in the terminal (via `npx qrcode-terminal`) and show the
-   direct link — user can scan OR open the link in WeChat
-3. Poll for scan status (wait → scaned → confirmed)
-4. Auto-refresh QR up to 3 times if it expires
-5. Save credentials to `~/.claude/channels/weixin/credentials.json`
-6. Add the scanner's user ID to the allowlist
+**Step 1: Fetch and display QR code**
 
-After the script completes, tell the user to restart Claude Code to activate
-the channel.
-
-For a custom API base URL:
 ```bash
-bun "${CLAUDE_PLUGIN_ROOT}/login.ts" --base-url "https://custom.endpoint.com/"
+bun <plugin-root>/login-qr.ts
 ```
+
+This script:
+- Fetches a QR code from `https://ilinkai.weixin.qq.com/`
+- Renders it in the terminal using `npx qrcode-terminal`
+- Shows the direct link (user can open in WeChat)
+- Outputs JSON as the last line: `{"qrcode":"...","url":"..."}`
+
+**Wait for the user** after showing the QR code. Tell them:
+*"用微信扫描二维码，或在微信中打开上面的链接。扫码完成后告诉我。"*
+
+Extract the `qrcode` value from the last line of output — you'll need it
+for step 2.
+
+**Step 2: Poll for scan result**
+
+After the user says they've scanned (or just proceed after showing the QR):
+
+```bash
+bun <plugin-root>/login-poll.ts <qrcode>
+```
+
+This script polls the WeChat API for scan status. It outputs one line:
+- `scaned` — user scanned, waiting for confirmation on phone
+- `expired` — QR expired (exit code 1). Offer to re-run step 1.
+- `timeout` — timed out (exit code 1). Offer to re-run step 1.
+- `{"token":"...","baseUrl":"...","accountId":"...","userId":"..."}` — success!
+  Credentials saved and scanner added to allowlist. (exit code 0)
+
+On success, tell the user:
+- *"✅ 微信连接成功！"*
+- Credentials saved, user added to allowlist
+- *"重启 Claude Code 会话以启用微信频道"*
+
+On `scaned`, tell the user *"已扫码，请在微信上点击确认..."* and note
+the poll script is still running.
 
 ### `clear` — remove credentials
 
