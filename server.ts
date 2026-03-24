@@ -724,6 +724,9 @@ await mcp.connect(new StdioServerTransport())
 // --- Inbound message handler ---
 
 async function handleInbound(msg: any): Promise<void> {
+  // Log raw message for debugging media delivery
+  process.stderr.write(`weixin channel: inbound msg type=${msg.message_type} items=${JSON.stringify((msg.item_list ?? []).map((i: any) => ({ type: i.type, has_cdn: !!(i.image_item?.cdn_url || i.voice_item?.cdn_url || i.file_item?.cdn_url || i.video_item?.cdn_url) })))}\n`)
+
   if (msg.message_type !== 1) return
 
   const senderId = msg.from_user_id
