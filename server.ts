@@ -279,10 +279,17 @@ async function uploadMedia(filePath: string, mediaType: number = 3): Promise<{ d
     base_info: { channel_version: '1.0.0' },
   })
 
-  if (!uploadResp.upload_param) throw new Error('getuploadurl: no upload_param returned')
+  // Debug: dump getuploadurl response
+  try {
+    mkdirSync(join(STATE_DIR, 'debug'), { recursive: true })
+    writeFileSync(join(STATE_DIR, 'debug', `upload-resp-${Date.now()}.json`), JSON.stringify(uploadResp, null, 2) + '\n')
+  } catch {}
+
+  const uploadParam = uploadResp.upload_param ?? uploadResp.uploadParam ?? uploadResp.upload_url
+  if (!uploadParam) throw new Error(`getuploadurl: no upload_param in response: ${JSON.stringify(Object.keys(uploadResp))}`)
 
   // Build CDN upload URL
-  const cdnUploadUrl = `${CDN_BASE}/c2c/upload?encrypted_query_param=${encodeURIComponent(uploadResp.upload_param)}&filekey=${filekey}`
+  const cdnUploadUrl = `${CDN_BASE}/c2c/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${filekey}`
 
   const putRes = await fetch(cdnUploadUrl, {
     method: 'POST',
@@ -683,7 +690,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
               await sendMediaMessage(userId, filePath, contextToken, isImage ? 'image' : 'file')
               filesSent++
             } catch (err) {
-              process.stderr.write(`weixin channel: file send failed for ${filePath}: ${err}\n`)
+              const errMsg = err instanceof Error ? err.stack ?? err.message : String(err)
+              process.stderr.write(`weixin channel: file send failed for ${filePath}: ${errMsg}\n`)
+              try {
+                mkdirSync(join(STATE_DIR, 'debug'), { recursive: true })
+                writeFileSync(join(STATE_DIR, 'debug', `upload-error-${Date.now()}.txt`), `${filePath}\n${errMsg}\n`)
+              } catch {}
             }
           }
         }
