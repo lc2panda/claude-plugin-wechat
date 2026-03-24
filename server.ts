@@ -261,16 +261,18 @@ async function sendTyping(toUserId: string, contextToken: string): Promise<void>
 // 3. AES-128-ECB encrypt and POST to CDN
 // 4. CDN returns x-encrypted-param for download reference
 
-async function uploadMedia(filePath: string, mediaType: number = 3): Promise<{ downloadParam: string; aesKeyHex: string; fileSize: number }> {
+async function uploadMedia(filePath: string, toUserId: string, mediaType: number = 3): Promise<{ downloadParam: string; aesKeyHex: string; fileSize: number }> {
   const fileData = readFileSync(filePath)
   const aesKey = randomBytes(16)
   const filekey = randomBytes(16).toString('hex')
-  const rawfilemd5 = (await import('crypto')).createHash('md5').update(fileData).digest('hex')
+  const { createHash } = await import('crypto')
+  const rawfilemd5 = createHash('md5').update(fileData).digest('hex')
   const encrypted = encryptAesEcb(fileData, aesKey)
 
   const uploadResp = await apiFetch('ilink/bot/getuploadurl', {
     filekey,
     media_type: mediaType, // 1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE
+    to_user_id: toUserId,
     rawsize: fileData.length,
     rawfilemd5,
     filesize: encrypted.length,
@@ -310,7 +312,7 @@ async function uploadMedia(filePath: string, mediaType: number = 3): Promise<{ d
 
 async function sendMediaMessage(to: string, filePath: string, contextToken: string, mediaType: 'image' | 'file' = 'file'): Promise<void> {
   const uploadMediaType = mediaType === 'image' ? 1 : 3
-  const upload = await uploadMedia(filePath, uploadMediaType)
+  const upload = await uploadMedia(filePath, to, uploadMediaType)
   const itemType = mediaType === 'image' ? 2 : 4
 
   // aes_key in sendmessage: base64(hex string) — matches official format
