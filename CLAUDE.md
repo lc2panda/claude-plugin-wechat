@@ -35,7 +35,7 @@
 ## 1. 项目概览
 
 **项目名称**：claude-channel-weixin（微信频道插件）
-**版本**：plugin v0.4.0 / package v0.1.0
+**版本**：plugin v1.0.0 / package v0.1.0
 **许可证**：MIT
 **运行时**：Bun
 **核心功能**：基于腾讯 iLink Bot API 的微信消息桥接插件，使 Claude Code 可直接收发微信消息。
@@ -54,20 +54,22 @@
 
 | 文件 | 职责 | 行数 |
 |------|------|------|
-| `server.ts` | 主 MCP 服务器：长轮询收消息、发消息、访问控制 | ~518 |
+| `server.ts` | 主 MCP 服务器：长轮询、媒体收发、权限中继、访问控制 | ~892 |
 | `login-qr.ts` | 登录步骤1：获取并显示终端 QR 码 | ~39 |
-| `login-poll.ts` | 登录步骤2：轮询扫码状态、保存凭据 | ~115 |
-| `package.json` | 依赖声明（MCP SDK + qrcode-terminal） | ~14 |
+| `login-poll.ts` | 登录步骤2：轮询扫码状态、保存凭据、QR 自动刷新 | ~145 |
+| `package.json` | 依赖声明（MCP SDK + qrcode-terminal + zod） | ~15 |
 | `.mcp.json` | MCP 服务器启动配置 | ~7 |
-| `.claude-plugin/plugin.json` | Claude Code 插件元数据 | ~7 |
+| `.claude-plugin/plugin.json` | Claude Code 插件元数据 | ~12 |
 | `skills/configure/SKILL.md` | /weixin:configure 技能定义 | — |
 | `skills/access/SKILL.md` | /weixin:access 技能定义 | — |
 | `README.md` | 用户文档 | ~65 |
+| `CLAUDE.md` | 项目记忆文件 | — |
 
 ### 依赖
 
 - `@modelcontextprotocol/sdk` ^1.0.0 — MCP 服务器框架
 - `qrcode-terminal` ^0.12.0 — 终端 QR 码渲染
+- `zod` ^3.23.0 — 权限中继 schema 验证
 
 ### 状态存储
 
@@ -75,7 +77,9 @@
 - `credentials.json` — bot_token + baseUrl + userId + accountId
 - `access.json` — dmPolicy / allowFrom / pending（配对码）
 - `sync_buf.txt` — getUpdates 游标
+- `context-tokens.json` — 用户 context_token 持久化（防抖5秒写入）
 - `approved/` — 新配对用户标记目录
+- `inbox/` — 下载的媒体附件存放目录
 
 ---
 
@@ -342,76 +346,55 @@ await mcp.connect(new StdioServerTransport())    // 4. stdio 传输（Claude Cod
 
 ---
 
-## 6. 最优实现路线图（Top-10 方案）
+## 6. 最优实现路线图（Top-10 方案）— 全部已完成
 
-### Phase 1：核心协议对齐（🔴 严重差距修复）
+> **实施完成时间**：2026-03-24，commit `0b7d35e`
 
-**P1.1 权限中继**
-- 在 Server capabilities 中添加 `'claude/channel/permission': {}`
-- 实现 `PermissionRequestSchema` 通知处理器
-- 在入站消息处理中添加 `yes/no <id>` verdict 拦截（正则：`/^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i`）
-- 参考：官方 Telegram server.ts
+### Phase 1：核心协议对齐 — ✅ 已完成
 
-**P1.2 媒体接收（AES-128-ECB CDN 解密）**
-- 实现 `decryptAesEcb(buffer, key)` 函数（PKCS7 padding）
-- 支持双编码 AES Key：base64(raw 16B) 和 base64(hex 32 chars)
-- 收到 type=2/3/4/5 消息时下载 CDN 文件 → 解密 → 存入 `inbox/`
-- 通过 `image_path` / `attachment_file_id` meta 传递给 Claude
+| 方案 | 实现位置 | 状态 |
+|------|---------|------|
+| P1.1 权限中继 | `server.ts` PermissionRequestSchema + PERMISSION_REPLY_RE + verdict 拦截 | ✅ |
+| P1.2 媒体接收 | `server.ts` extractText → pendingAttachments 懒加载（image/voice/file/video） | ✅ |
+| P1.3 附件工具 | `server.ts` download_attachment MCP Tool + parseAesKey + decryptAesEcb | ✅ |
+| P1.4 媒体发送 | `server.ts` reply files 参数 + uploadMedia + sendMediaMessage + encryptAesEcb | ✅ |
 
-**P1.3 附件工具 `download_attachment`**
-- 新增 MCP Tool：`download_attachment(file_id)` → 下载并解密 → 返回本地路径
-- 参考：官方 Telegram 实现
+### Phase 2：体验增强 — ✅ 已完成
 
-**P1.4 媒体发送（reply 工具 files 参数）**
-- reply 工具添加 `files` 参数支持
-- 实现 `encryptAesEcb(buffer, key)` 加密
-- 调用 `getuploadurl` 获取预签名 URL → PUT 加密文件 → sendmessage 引用
+| 方案 | 实现位置 | 状态 |
+|------|---------|------|
+| P2.1 context_token 持久化 | `server.ts` CONTEXT_TOKENS_FILE + persistContextTokens + debouncedPersist | ✅ |
+| P2.2 Typing 指示器 | `server.ts` refreshTypingTicket + sendTyping（30分钟缓存） | ✅ |
+| P2.3 Graceful Shutdown | `server.ts` shutdown() + stdin EOF/error + SIGTERM/SIGINT + 2s 超时 | ✅ |
+| P2.4 Skill allowed-tools | `skills/access/SKILL.md` + `skills/configure/SKILL.md` 已有 allowed-tools | ✅（原有） |
 
-### Phase 2：体验增强（🟡 中等差距修复）
+### Phase 3：精细打磨 — ✅ 已完成
 
-**P2.1 context_token 持久化**
-- 将内存 `contextTokenMap` 同步到 `~/.claude/channels/weixin/context-tokens.json`
-- 启动时从文件恢复
-
-**P2.2 Typing 指示器**
-- 收到消息后立即调用 `getconfig` 获取 `typing_ticket`
-- 调用 `sendtyping` 发送"正在输入"状态
-
-**P2.3 Graceful Shutdown**
-- 监听 stdin EOF、SIGTERM、SIGINT
-- 2 秒超时强制退出
-- 参考：官方 Telegram 实现
-
-**P2.4 Skill allowed-tools 限制**
-- configure/access SKILL.md 添加 `allowed-tools` frontmatter
-- 限制为：`Read`, `Write`, `Bash(ls *)`, `Bash(mkdir *)`
-
-### Phase 3：精细打磨（🟢 低差距修复）
-
-**P3.1 QR 自动刷新**
-- login-poll.ts 中检测 `expired` 状态后自动重新获取 QR 码
-- 最多刷新 3 次
-
-**P3.2 Markdown→纯文本转换**
-- 出站消息（reply 工具）将 Markdown 格式转为微信可读纯文本
-- 去除 `**bold**` → `bold`，`[text](url)` → `text (url)` 等
+| 方案 | 实现位置 | 状态 |
+|------|---------|------|
+| P3.1 QR 自动刷新 | `login-poll.ts` fetchNewQrCode + MAX_QR_REFRESHES=3 + refreshed 输出 | ✅ |
+| P3.2 Markdown→纯文本 | `server.ts` markdownToPlaintext（代码块/粗体/斜体/链接/列表等） | ✅ |
 
 ---
 
-## 7. 本项目与官方微信插件的实现对比
+## 7. 本项目与官方微信插件的实现对比（已更新）
+
+> **更新于**：2026-03-24 Phase 1/2/3 整合后
 
 | 维度 | 本项目实现 | 官方 @tencent-weixin 实现 | 一致性 |
 |------|-----------|-------------------------|--------|
-| 登录流程 | QR获取 → 轮询确认 → 存凭据 | QR获取 → 轮询(支持3次刷新) → 存凭据 | ⚠️ 缺刷新 |
+| 登录流程 | QR获取 → 轮询(3次自动刷新) → 存凭据 | QR获取 → 轮询(支持3次刷新) → 存凭据 | ✅ 一致 |
 | 收消息 | getupdates 长轮询 + sync_buf | getupdates 长轮询 + sync_buf | ✅ 一致 |
-| 发消息 | sendmessage + context_token（仅文本） | sendmessage + context_token（文本+媒体） | ⚠️ 缺媒体 |
+| 发消息 | sendmessage + context_token（文本+媒体） | sendmessage + context_token（文本+媒体） | ✅ 一致 |
 | 认证头 | Bearer + randomUIN | Bearer + randomUIN | ✅ 一致 |
-| 消息分块 | 2000 字符限制 | 2000 字符 + blockStreaming 合并 | ⚠️ 缺合并 |
-| 媒体接收 | 占位符 | AES-128-ECB CDN 解密 | ❌ 缺失 |
-| 媒体发送 | 无 | AES-128-ECB 加密 + CDN 上传 | ❌ 缺失 |
-| Typing | 无 | getconfig + sendtyping | ❌ 缺失 |
-| context_token | 内存 Map | 文件持久化 | ⚠️ 缺持久化 |
-| Debug 模式 | 无 | /echo + /toggle-debug | ❌ 缺失 |
+| 消息分块 | 2000 字符 + Markdown→纯文本 | 2000 字符 + blockStreaming 合并 | ⚠️ 缺合并 |
+| 媒体接收 | pendingAttachments + download_attachment 工具 | AES-128-ECB CDN 解密 | ✅ 一致 |
+| 媒体发送 | reply files + encryptAesEcb + CDN 上传 | AES-128-ECB 加密 + CDN 上传 | ✅ 一致 |
+| Typing | refreshTypingTicket + sendTyping | getconfig + sendtyping | ✅ 一致 |
+| context_token | 文件持久化（防抖5秒） | 文件持久化 | ✅ 一致 |
+| AES 双编码 | parseAesKey（raw 16B + hex 32 chars） | 双编码支持 | ✅ 一致 |
+| 权限中继 | claude/channel/permission（Claude Code 特有） | N/A（OpenClaw 无此概念） | ✅ 超越 |
+| Debug 模式 | 无 | /echo + /toggle-debug | ⬜ 低优先 |
 
 ---
 
