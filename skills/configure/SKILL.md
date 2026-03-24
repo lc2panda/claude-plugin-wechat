@@ -10,10 +10,10 @@ allowed-tools:
   - Bash(bun *)
 ---
 
-# /weixin:configure — WeChat Channel Setup
+# /wechat:configure — WeChat Channel Setup
 
 Manages WeChat iLink Bot login and credential storage. Credentials live in
-`~/.claude/channels/weixin/credentials.json`.
+`~/.claude/channels/wechat/credentials.json`.
 
 Arguments passed: `$ARGUMENTS`
 
@@ -25,19 +25,19 @@ Arguments passed: `$ARGUMENTS`
 
 Read both state files and give the user a complete picture:
 
-1. **Credentials** — check `~/.claude/channels/weixin/credentials.json` for
+1. **Credentials** — check `~/.claude/channels/wechat/credentials.json` for
    `token` and `baseUrl`. Show set/not-set; if set, show token first 6 chars
    masked.
 
-2. **Access** — read `~/.claude/channels/weixin/access.json` (missing file
+2. **Access** — read `~/.claude/channels/wechat/access.json` (missing file
    = defaults: `dmPolicy: "pairing"`, empty allowlist). Show:
    - DM policy and what it means
    - Allowed senders: count and list
    - Pending pairings: count with codes and sender IDs
 
 3. **What next** — concrete next step based on state:
-   - No credentials → *"Run `/weixin:configure login` to scan QR code and connect."*
-   - Credentials set, nobody allowed → *"Send a message to the bot on WeChat. It replies with a code; approve with `/weixin:access pair <code>`."*
+   - No credentials → *"Run `/wechat:configure login` to scan QR code and connect."*
+   - Credentials set, nobody allowed → *"Send a message to the bot on WeChat. It replies with a code; approve with `/wechat:access pair <code>`."*
    - Credentials set, someone allowed → *"Ready. Message the bot on WeChat to reach the assistant."*
 
 ### `login` — QR code login
@@ -46,7 +46,7 @@ This is a TWO-STEP process. The scripts are in the plugin install directory.
 Find the plugin root by looking for the `login-qr.ts` file:
 
 ```
-~/.claude/plugins/cache/m1heng-plugins/weixin/*/login-qr.ts
+~/.claude/plugins/cache/lc2panda-plugins/wechat/*/login-qr.ts
 ```
 
 Use `ls` to resolve the wildcard and get the actual path.
@@ -94,7 +94,7 @@ the poll script is still running.
 
 ### `clear` — remove credentials
 
-Delete `~/.claude/channels/weixin/credentials.json`.
+Delete `~/.claude/channels/wechat/credentials.json`.
 
 ### `baseurl <url>` — set custom API base URL
 
@@ -110,7 +110,7 @@ update `baseUrl`, write back.
 - The server reads credentials.json once at boot. Credential changes need a
   session restart. Say so after saving.
 - `access.json` is re-read on every inbound message — policy changes via
-  `/weixin:access` take effect immediately, no restart.
+  `/wechat:access` take effect immediately, no restart.
 - Default API base URL is `https://ilinkai.weixin.qq.com/`.
 - The QR code URL is a WeChat mini-program link. It works when scanned with
   WeChat's QR scanner OR when opened in WeChat's built-in browser.

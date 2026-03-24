@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
-const STATE_DIR = join(homedir(), '.claude', 'channels', 'weixin')
+const STATE_DIR = join(homedir(), '.claude', 'channels', 'wechat')
 const CREDENTIALS_FILE = join(STATE_DIR, 'credentials.json')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 

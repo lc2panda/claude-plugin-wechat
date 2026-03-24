@@ -5,7 +5,7 @@
   },
   "plugins": [
     {
-      "name": "weixin",
+      "name": "wechat",
       "source": {
         "source": "url",
         "url": "https://github.com/lc2panda/claude-plugin-wechat.git",
