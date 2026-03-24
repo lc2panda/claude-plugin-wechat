@@ -26,24 +26,6 @@ const baseUrl = (process.argv[3] || 'https://ilinkai.weixin.qq.com/').replace(/\
 const POLL_INTERVAL_MS = 3000
 const TIMEOUT_MS = 5 * 60_000
 
-async function pollStatus(): Promise<any> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 35000)
-  try {
-    const res = await fetch(
-      `${baseUrl}ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`,
-      { signal: controller.signal },
-    )
-    clearTimeout(timer)
-    if (!res.ok) throw new Error(`poll failed: ${res.status}`)
-    return await res.json()
-  } catch (err: any) {
-    clearTimeout(timer)
-    if (err?.name === 'AbortError') return { status: 'wait' }
-    throw err
-  }
-}
-
 function saveCredentials(data: any): void {
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
   const tmp = CREDENTIALS_FILE + '.tmp'
@@ -68,11 +50,44 @@ function addToAllowlist(userId: string): void {
   renameSync(tmp, ACCESS_FILE)
 }
 
-const deadline = Date.now() + TIMEOUT_MS
+const MAX_QR_REFRESHES = 3
+
+async function fetchNewQrCode(): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}ilink/bot/get_bot_qrcode?bot_type=3`)
+    if (!res.ok) return null
+    const data = await res.json() as any
+    return data.qrcode ?? null
+  } catch {
+    return null
+  }
+}
+
+let currentQrcode = qrcode
+let refreshCount = 0
+let deadline = Date.now() + TIMEOUT_MS
 let scannedShown = false
 
 while (Date.now() < deadline) {
-  const resp = await pollStatus()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 35000)
+  let resp: any
+  try {
+    const res = await fetch(
+      `${baseUrl}ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(currentQrcode)}`,
+      { signal: controller.signal },
+    )
+    clearTimeout(timer)
+    if (!res.ok) throw new Error(`poll failed: ${res.status}`)
+    resp = await res.json()
+  } catch (err: any) {
+    clearTimeout(timer)
+    if (err?.name === 'AbortError') {
+      resp = { status: 'wait' }
+    } else {
+      throw err
+    }
+  }
 
   switch (resp.status) {
     case 'wait':
@@ -85,9 +100,24 @@ while (Date.now() < deadline) {
       }
       break
 
-    case 'expired':
-      console.log('expired')
-      process.exit(1)
+    case 'expired': {
+      if (refreshCount >= MAX_QR_REFRESHES) {
+        console.log('expired')
+        process.exit(1)
+      }
+      refreshCount++
+      console.error(`QR 码已过期，正在自动刷新 (${refreshCount}/${MAX_QR_REFRESHES})...`)
+      const newQr = await fetchNewQrCode()
+      if (!newQr) {
+        console.log('expired')
+        process.exit(1)
+      }
+      currentQrcode = newQr
+      scannedShown = false
+      deadline = Date.now() + TIMEOUT_MS // reset deadline
+      console.log(`refreshed:${newQr}`)
+      break
+    }
 
     case 'confirmed': {
       const creds = {
