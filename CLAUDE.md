@@ -34,7 +34,7 @@
 
 ## 1. 项目概览
 
-**项目名称**：claude-channel-weixin（微信频道插件）
+**项目名称**：claude-channel-wechat（微信频道插件）
 **版本**：plugin v1.0.0 / package v0.1.0
 **许可证**：MIT
 **运行时**：Bun
@@ -54,14 +54,14 @@
 
 | 文件 | 职责 | 行数 |
 |------|------|------|
-| `server.ts` | 主 MCP 服务器：长轮询、媒体收发、权限中继、访问控制 | ~892 |
+| `server.ts` | 主 MCP 服务器：长轮询、媒体收发、权限中继、访问控制 | ~958 |
 | `login-qr.ts` | 登录步骤1：获取并显示终端 QR 码 | ~39 |
 | `login-poll.ts` | 登录步骤2：轮询扫码状态、保存凭据、QR 自动刷新 | ~145 |
 | `package.json` | 依赖声明（MCP SDK + qrcode-terminal + zod） | ~15 |
 | `.mcp.json` | MCP 服务器启动配置 | ~7 |
 | `.claude-plugin/plugin.json` | Claude Code 插件元数据 | ~12 |
-| `skills/configure/SKILL.md` | /weixin:configure 技能定义 | — |
-| `skills/access/SKILL.md` | /weixin:access 技能定义 | — |
+| `skills/configure/SKILL.md` | /wechat:configure 技能定义 | — |
+| `skills/access/SKILL.md` | /wechat:access 技能定义 | — |
 | `README.md` | 用户文档 | ~65 |
 | `CLAUDE.md` | 项目记忆文件 | — |
 
@@ -73,7 +73,7 @@
 
 ### 状态存储
 
-所有运行时状态位于 `~/.claude/channels/weixin/`：
+所有运行时状态位于 `~/.claude/channels/wechat/`：
 - `credentials.json` — bot_token + baseUrl + userId + accountId
 - `access.json` — dmPolicy / allowFrom / pending（配对码）
 - `sync_buf.txt` — getUpdates 游标
