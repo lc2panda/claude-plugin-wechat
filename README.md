@@ -57,21 +57,19 @@ rm -rf /tmp/weixin-build-check
 
 ### Step 4 — Register plugin with Claude Code
 
-There are two installation methods. Try Method A first.
-
-**Method A — Marketplace install (if published)**:
 ```bash
-claude plugin marketplace add m1heng/claude-plugins
-claude plugin install weixin@m1heng-plugins
+# Add marketplace (one-time)
+claude plugin marketplace add lc2panda/claude-plugin-wechat
+
+# Install plugin
+claude plugin install weixin@lc2panda-plugins
 ```
 
-**Method B — Local directory install (development)**:
+If the above fails (e.g. network issue), fallback to local install:
 ```bash
 claude --plugin-dir "$PLUGIN_ROOT"
 ```
-
-If using Method B, the `--plugin-dir` flag must be passed every time
-Claude Code starts. Tell the user this.
+Note: `--plugin-dir` must be passed every time Claude Code starts.
 
 ### Step 5 — WeChat QR Login **[HUMAN]**
 
@@ -108,9 +106,9 @@ The user must restart Claude Code with the channel flag. Tell them to run:
 
 > 请退出当前会话，用以下命令重新启动 Claude Code:
 > ```
-> claude --dangerously-load-development-channels plugin:weixin@m1heng-plugins
+> claude --dangerously-load-development-channels plugin:weixin@lc2panda-plugins
 > ```
-> 或者如果使用本地目录安装:
+> 如果使用本地目录安装:
 > ```
 > claude --dangerously-load-development-channels --plugin-dir <插件路径> server:weixin
 > ```

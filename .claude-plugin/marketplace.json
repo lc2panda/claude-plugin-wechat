@@ -1,0 +1,14 @@
+{
+  "name": "lc2panda-plugins",
+  "owner": {
+    "name": "lc2panda"
+  },
+  "plugins": [
+    {
+      "name": "weixin",
+      "source": ".",
+      "description": "WeChat (微信) channel for Claude Code — messaging bridge via iLink Bot API with built-in access control.",
+      "version": "1.0.0"
+    }
+  ]
+}
