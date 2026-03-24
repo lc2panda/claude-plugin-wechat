@@ -28,6 +28,10 @@ claude --dangerously-skip-permissions --dangerously-load-development-channels pl
 
 Prerequisites / 前置条件: [Claude Code](https://claude.ai/claude-code) v2.1.80+, [Bun](https://bun.sh) runtime. License: MIT.
 
+**Screenshot / 效果截图：**
+
+<img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
+
 ---
 
 ## If you are Claude Code (AI agent), read below
