@@ -103,10 +103,19 @@ Otherwise run the two-step QR login:
 
 ### Step 6 — Restart with channel enabled [HUMAN]
 
-Tell user to exit and restart with:
+Ask the user which permission mode they prefer, then give the corresponding command:
+
+**Option A — Auto-approve all permissions (faster, less interruption):**
 ```
 claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
+
+**Option B — Manual approval for each action (safer, you confirm every tool use):**
+```
+claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
+```
+
+Explain the difference: Option A lets Claude execute commands without asking. Option B prompts for confirmation on sensitive actions (file writes, shell commands, etc.) — approvals can also come from WeChat via permission relay.
 
 ### Step 7 — Pair WeChat account [HUMAN]
 
