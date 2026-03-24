@@ -28,6 +28,9 @@ claude --dangerously-skip-permissions --dangerously-load-development-channels pl
 
 Prerequisites / 前置条件: [Claude Code](https://claude.ai/claude-code) v2.1.80+, [Bun](https://bun.sh) runtime. License: MIT.
 
+**WeCom / 企业微信：** Looking for WeCom (企业微信) integration? Check out [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom).
+如需接入企业微信，请查看 [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)，感谢开发者 dividduang 的贡献。
+
 **Screenshot / 效果截图：**
 
 <img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
