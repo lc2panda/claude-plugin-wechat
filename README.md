@@ -196,4 +196,12 @@ Send a test message from WeChat. It should arrive as a `<channel source="wechat"
 
 ---
 
+## Acknowledgement / 致谢
+
+This project is based on [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin). Thanks for the original work.
+
+本项目基于 [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin) 开发，感谢原作者的贡献。
+
+---
+
 License: MIT
