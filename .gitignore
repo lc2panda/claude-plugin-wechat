@@ -8,3 +8,4 @@ package-lock.json
 .claude/
 .factory/
 skills-lock.json
+CLAUDE.md
