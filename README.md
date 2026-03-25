@@ -26,7 +26,9 @@ claude --dangerously-skip-permissions --dangerously-load-development-channels pl
 **Pair / 配对：** Send any message to the bot on WeChat → get a code → run `/wechat:access pair <code>`.
 从微信给机器人发任意消息 → 收到配对码 → 在终端执行 `/wechat:access pair <配对码>`。
 
-Prerequisites / 前置条件: [Claude Code](https://claude.ai/claude-code) v2.1.80+, [Bun](https://bun.sh) runtime. License: MIT.
+Prerequisites / 前置条件: [Claude Code](https://claude.ai/claude-code) v2.1.80+, [Bun](https://bun.sh) runtime, **claude.ai login required** (API key / Console auth not supported — Channels is a claude.ai feature). License: MIT.
+
+前置条件：[Claude Code](https://claude.ai/claude-code) v2.1.80+、[Bun](https://bun.sh) 运行时、**必须使用 claude.ai 登录**（不支持 API Key / Console 认证 — Channels 是 claude.ai 功能）。
 
 **WeCom / 企业微信：** Looking for WeCom (企业微信) integration? Check out [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom).
 如需接入企业微信，请查看 [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)，感谢开发者 dividduang 的贡献。
@@ -50,6 +52,8 @@ bun --version      # required
 ```
 
 If `bun` is missing, tell user: "Please install Bun first: `curl -fsSL https://bun.sh/install | bash` then restart your terminal."
+
+**CRITICAL**: Channels require **claude.ai OAuth login**. If the user is authenticated via API key, Console, or a third-party provider (e.g. Bedrock, Vertex), channels will not work — Claude Code will show "Channels are not currently available". Tell the user: "Channels require claude.ai login. Please run `claude logout` then `claude login` to switch to claude.ai authentication."
 
 ### Step 1 — Locate plugin root
 
@@ -197,6 +201,7 @@ Send a test message from WeChat. It should arrive as a `<channel source="wechat"
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| `Channels are not currently available` | Using API key / Console / third-party auth instead of claude.ai login | Run `claude logout` then `claude login` to switch to claude.ai OAuth |
 | `credentials required` on start | No QR login | Run Step 5 |
 | No channel events arriving | Missing `--dangerously-load-development-channels` flag | Run Step 6 |
 | `user X is not allowlisted` | User not paired | Run Step 7 |
