@@ -1,33 +1,31 @@
 # claude-plugin-wechat
 
-WeChat (微信) plugin for [Claude Code](https://claude.ai/claude-code) — text, images, files, voice, video, remote permission relay.
-
 微信插件，让你通过微信直接与 Claude Code 对话。支持文字、图片、文件、语音、视频、远程权限审批。
+
+WeChat plugin for [Claude Code](https://claude.ai/claude-code).
 
 <img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
 
-## Two modes / 两种模式
+---
 
-| | **Channel** | **ACP** |
+## 两种模式
+
+| | **Channel 模式** | **ACP 模式** |
 |---|---|---|
-| **Who / 适用** | claude.ai subscribers | API Key / any provider |
-| **Features / 特点** | Full features, permission relay | Claude, Copilot, Gemini, Codex, Qwen... |
-| **Install / 安装** | Plugin marketplace | `bun add -g` or `bunx` |
+| 适用 | claude.ai 订阅用户 | API Key / 任意 AI 服务商 |
+| 特点 | 全功能，微信远程审批权限 | 支持 Claude、Copilot、Gemini、Codex、通义千问 |
+| 安装 | Claude Code 插件市场 | 终端全局安装 |
 
-> claude.ai login → **Channel** / API Key → **ACP**
+> **怎么选？** 用 claude.ai 账号登录的 → **Channel**。用 API Key 的 → **ACP**。
 
 ---
 
-<details>
-<summary><b>Channel mode / 频道模式</b>（click to expand / 点击展开）</summary>
+<details open>
+<summary><h3>Channel 模式</h3></summary>
 
-> Requires [Claude Code](https://claude.ai/claude-code) v2.1.80+ with **claude.ai login**. All commands below are typed in your Claude Code terminal.
->
-> 需要 [Claude Code](https://claude.ai/claude-code) v2.1.80+，并使用 **claude.ai 登录**。以下命令均在 Claude Code 终端中输入。
+> 前置条件：[Claude Code](https://claude.ai/claude-code) v2.1.80+，使用 claude.ai 账号登录。
 
-**1. Install plugin / 安装插件**
-
-In Claude Code terminal, type:
+#### 第 1 步 · 安装插件
 
 在 Claude Code 终端中输入：
 ```bash
@@ -35,46 +33,45 @@ claude plugin marketplace add lc2panda/claude-plugin-wechat
 claude plugin install wechat@lc2panda-plugins
 ```
 
-**2. Login / 微信登录** — Type `/wechat:configure login`, scan QR with WeChat, confirm on phone.
+#### 第 2 步 · 微信登录
 
-输入 `/wechat:configure login`，微信扫码，手机确认。
+在 Claude Code 终端中输入 `/wechat:configure login`，微信扫码，手机确认。
 
-**3. Start / 启动** — Quit Claude Code and restart with:
+#### 第 3 步 · 启动
 
 退出 Claude Code，用以下命令重新启动：
 ```bash
-# Auto-approve (faster) / 自动授权（更快）
+# 自动授权（更快）
 claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 
-# Or: manual confirm (approve via WeChat) / 或：手动确认（微信审批）
+# 手动确认（更安全，通过微信审批每个操作）
 claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-**4. Pair / 配对**
+#### 第 4 步 · 配对
 
-1. Open WeChat, send any message to the bot / 打开微信，给机器人发消息
-2. Bot replies with a 6-char code / 机器人回复配对码
-3. Back in Claude Code terminal, type: / 回到终端输入：`/wechat:access pair <code>`
+1. 打开微信，给机器人发任意消息
+2. 机器人回复一个 6 位配对码
+3. 回到 Claude Code 终端，输入：`/wechat:access pair <配对码>`
 
-**Stop / 停止：** Press `Ctrl+C` or type `/exit` in Claude Code.
+> 停止：在 Claude Code 中按 `Ctrl+C` 或输入 `/exit`
 
 </details>
 
-<details>
-<summary><b>ACP mode / ACP 模式</b>（click to expand / 点击展开）</summary>
+---
 
-> `wechat-acp` is a bridge service: WeChat ↔ AI Agent (Claude Code / Gemini / Copilot...).
-> It runs in your terminal and **automatically launches** the AI agent in the background — you don't need to start Claude Code yourself.
+<details open>
+<summary><h3>ACP 模式</h3></summary>
+
+> `wechat-acp` 是一个桥接服务：**微信 ↔ AI 引擎**。
+> 在终端运行后，它会自动在后台启动 AI 引擎（默认 Claude Code），你不需要手动打开 Claude Code。
 >
-> `wechat-acp` 是一个桥接服务：微信 ↔ AI（Claude Code / Gemini / Copilot...）。
-> 在终端运行后，它会**自动启动** AI 引擎，你不需要手动打开 Claude Code。
->
-> **macOS / Linux / Windows** — all commands typed in your **terminal** (Terminal.app / PowerShell / CMD).
+> 支持 macOS / Linux / Windows，以下命令在你电脑的**终端**中输入（Terminal / PowerShell / CMD）。
 
-**Step 1 — Install Bun + plugin / 安装 Bun + 插件**
+#### 第 1 步 · 安装
 
 <details>
-<summary>1a. Install Bun (skip if already have) / 安装 Bun（已有可跳过，`bun --version` 检查）</summary>
+<summary>前置：安装 Bun 运行时（已有可跳过，<code>bun --version</code> 检查）</summary>
 
 ```bash
 # macOS / Linux
@@ -85,114 +82,85 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 ```
 </details>
 
+在终端输入：
 ```bash
-bun add -g claude-plugin-wechat
+bun add -g github:lc2panda/claude-plugin-wechat
 ```
-`wechat-acp` command is now available globally.
 
-`wechat-acp` 命令现在全局可用。
+安装完成，`wechat-acp` 命令全局可用。
 
-**Step 2 — Start / 启动**
+#### 第 2 步 · 启动
 
 ```bash
 wechat-acp
 ```
 
-- **First run:** QR code appears → scan with WeChat → confirm on phone → bridge starts + AI agent launches automatically.
-- **Already logged in:** Bridge + AI agent start immediately.
+- **首次运行：** 自动弹出二维码 → 微信扫码 → 手机确认 → 服务启动，AI 引擎自动拉起
+- **已登录过：** 直接启动
 
-- **首次运行：** 自动弹出二维码 → 微信扫码 → 手机确认 → 桥接服务启动，AI 引擎自动拉起。
-- **已登录过：** 直接启动。
+保持终端窗口开着，服务运行中。
 
-Keep this terminal window open — the service is running.
+> 重新登录：`wechat-acp --login`
 
-保持终端开着，服务运行中。
+#### 第 3 步 · 配对
 
-> Re-login: `wechat-acp --login` / 重新登录：`wechat-acp --login`
+1. 打开微信，给机器人发任意消息
+2. 收到 6 位配对码
+3. 打开**另一个终端窗口**，启动 Claude Code，输入：`/wechat:access pair <配对码>`
 
-**Step 3 — Pair / 配对**
+**完成！** 微信发消息 → AI 回复。
 
-1. Open WeChat, send any message to the bot / 打开微信，给机器人发消息
-2. Bot replies with a 6-char code / 收到 6 位配对码
-3. In a **new terminal window**, start Claude Code and type: / 打开**另一个终端窗口**，启动 Claude Code 输入：`/wechat:access pair <code>`
-
-**Done!** Now send messages in WeChat → AI responds. You're using Claude Code via WeChat.
-
-**完成！** 微信发消息 → AI 回复。你正在通过微信使用 Claude Code。
+---
 
 <details>
-<summary><b>How it works / 工作原理</b></summary>
+<summary><b>工作原理</b></summary>
 
 ```
-You (WeChat) → wechat-acp bridge → Claude Code (auto-spawned) → response → WeChat
-   手机微信        终端桥接服务        自动启动的 AI 引擎        回复        微信收到
+手机微信 → wechat-acp 桥接服务 → Claude Code（自动启动） → AI 回复 → 微信收到
 ```
 
-- `wechat-acp` polls WeChat for messages and forwards them to the AI agent
-- The AI agent (Claude Code by default) is a background subprocess — you never see it
-- Each WeChat user gets their own persistent AI session
 - `wechat-acp` 轮询微信消息，转发给 AI 引擎
-- AI 引擎（默认 Claude Code）是后台子进程，你看不到它
-- 每个微信用户都有独立的 AI 会话
+- AI 引擎是后台子进程，你看不到它
+- 每个微信用户有独立的 AI 会话，互不干扰
 
 </details>
 
 <details>
-<summary><b>Switch project / 切换项目目录</b></summary>
+<summary><b>切换项目目录</b></summary>
 
-Send in WeChat / 在微信中发送：
+在微信中发送：
 ```
 /cwd /path/to/your/project
 ```
-AI restarts in the new directory. No need to touch the terminal.
+AI 会话在新目录重启，不用动终端。
 
-AI 在新目录重启，不用动终端。
-
-View current directory / 查看当前目录：
-```
-/cwd
-```
+查看当前目录：`/cwd`
 
 </details>
+
+
+> 停止：在运行 `wechat-acp` 的终端按 `Ctrl+C`
+
+</details>
+
+---
 
 <details>
-<summary><b>Use other AI agents / 使用其他 AI 引擎</b></summary>
+<summary><h3>微信端命令</h3></summary>
 
-```bash
-ACP_AGENT=gemini wechat-acp            # Google Gemini
-ACP_AGENT=copilot wechat-acp           # GitHub Copilot
-ACP_AGENT=codex wechat-acp             # OpenAI Codex
-ACP_AGENT=qwen wechat-acp              # Qwen / 通义千问
-wechat-acp --cwd /path/to/project      # Set default working directory / 指定默认工作目录
-```
+在微信中发送以下命令：
 
-Third-party API / 第三方 API (GLM, Kimi, 文心...):
-```bash
-ANTHROPIC_BASE_URL=https://your-provider/v1 ANTHROPIC_API_KEY=your-key wechat-acp
-```
+| 命令 | 作用 |
+|------|------|
+| `/cwd [路径]` | 查看或切换工作目录（ACP 模式） |
+| `/toggle-debug` | 切换调试模式 |
+| `/echo <文字>` | 回显并显示延迟 |
 
 </details>
 
-**Stop / 停止：** `Ctrl+C` in the terminal running `wechat-acp` / 在运行 `wechat-acp` 的终端按 `Ctrl+C`
+### 相关项目
 
-</details>
-
-<details>
-<summary><b>WeChat commands / 微信端命令</b>（both modes / 两种模式通用）</summary>
-
-Send these as messages in WeChat / 在微信中发送以下命令：
-
-| Command | Effect |
-|---------|--------|
-| `/cwd [path]` | Show or switch working directory (ACP) / 查看或切换工作目录 |
-| `/toggle-debug` | Toggle debug mode / 切换调试模式 |
-| `/echo <text>` | Echo with latency / 回显并显示延迟 |
-
-</details>
-
-### Related / 相关项目
-
-- **WeCom / 企业微信：** [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)
+- **企业微信：** [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)
 
 ---
 
@@ -295,7 +263,7 @@ For users with API key / Console / Bedrock / Vertex auth. Uses ACP (Agent Client
 #### Step 1 — Install globally [HUMAN]
 
 ```bash
-bun add -g claude-plugin-wechat
+bun add -g github:lc2panda/claude-plugin-wechat
 ```
 
 If `bun` is missing, tell user to install: `curl -fsSL https://bun.sh/install | bash`
