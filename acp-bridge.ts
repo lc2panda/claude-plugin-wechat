@@ -1,14 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Input: WeChat messages via iLink Bot API + Claude Code CLI responses
+ * Input: WeChat messages via iLink Bot API + ACP agent responses
  * Output: WeChat replies via iLink Bot API
- * Pos: Agent SDK bridge — alternative to MCP Channel mode for API Key users
+ * Pos: ACP bridge — connects WeChat to any ACP-compatible AI agent (Claude Code, Copilot, Gemini, Codex, etc.)
  *
- * Self-contained bridge that connects WeChat to Claude Code via `claude -p` CLI.
- * State lives in ~/.claude/channels/wechat/ — shares credentials and access
- * control with the MCP Channel mode (server.ts).
- *
- * Uses WeChat iLink Bot API with HTTP long-poll — no public webhook needed.
+ * Uses Agent Client Protocol (ACP) for persistent agent sessions.
+ * Each WeChat user gets a dedicated agent subprocess with session continuity.
+ * State lives in ~/.claude/channels/wechat/
  */
 
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
@@ -16,9 +14,12 @@ import {
   readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync,
   statSync, renameSync, realpathSync,
 } from 'fs'
+import fs from 'node:fs'
 import { homedir } from 'os'
 import { join, sep } from 'path'
-import { spawn } from 'child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { Writable, Readable } from 'node:stream'
+import * as acp from '@agentclientprotocol/sdk'
 
 // --- State directories ---
 
@@ -29,7 +30,7 @@ try {
   const { existsSync } = await import('fs')
   if (existsSync(OLD_STATE_DIR) && !existsSync(STATE_DIR)) {
     renameSync(OLD_STATE_DIR, STATE_DIR)
-    process.stderr.write('wechat agent-bridge: migrated state from channels/weixin to channels/wechat\n')
+    process.stderr.write('wechat acp-bridge: migrated state from channels/weixin to channels/wechat\n')
   }
 } catch {}
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -40,7 +41,19 @@ const CONTEXT_TOKENS_FILE = join(STATE_DIR, 'context-tokens.json')
 const INBOX_DIR = join(STATE_DIR, 'inbox')
 const CDN_BASE = 'https://novac2c.cdn.weixin.qq.com'
 const DEBUG_MODE_FILE = join(STATE_DIR, 'debug-mode.json')
-const SESSIONS_FILE = join(STATE_DIR, 'sdk-sessions.json')
+
+// --- ACP Agent configuration ---
+
+const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? 'claude'
+const AGENT_ARGS = (process.env.ACP_AGENT_ARGS ?? '').split(' ').filter(Boolean)
+const AGENT_CWD = process.env.ACP_AGENT_CWD ?? process.cwd()
+const AGENT_ENV: Record<string, string> = (() => {
+  const raw = process.env.ACP_AGENT_ENV ?? ''
+  if (!raw) return {}
+  try { return JSON.parse(raw) } catch { return {} }
+})()
+const MAX_CONCURRENT_USERS = parseInt(process.env.ACP_MAX_USERS ?? '10', 10)
+const IDLE_TIMEOUT_MS = parseInt(process.env.ACP_IDLE_TIMEOUT ?? '86400000', 10) // 24h default
 
 // --- Debug mode ---
 
@@ -76,7 +89,7 @@ const creds = loadCredentials()
 
 if (!creds?.token || !creds?.baseUrl) {
   process.stderr.write(
-    `wechat agent-bridge: credentials required\n` +
+    `wechat acp-bridge: credentials required\n` +
     `  run /wechat:configure in Claude Code to scan QR and login\n`,
   )
   process.exit(1)
@@ -132,7 +145,7 @@ function persistContextTokens(): void {
     writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { mode: 0o600 })
     renameSync(tmp, CONTEXT_TOKENS_FILE)
   } catch (err) {
-    process.stderr.write(`wechat agent-bridge: context-tokens persist failed: ${err}\n`)
+    process.stderr.write(`wechat acp-bridge: context-tokens persist failed: ${err}\n`)
   }
 }
 
@@ -258,7 +271,7 @@ async function refreshTypingTicket(): Promise<string> {
       typingTicketExpiry = Date.now() + 30 * 60 * 1000
     }
   } catch (err) {
-    process.stderr.write(`wechat agent-bridge: getconfig failed: ${err}\n`)
+    process.stderr.write(`wechat acp-bridge: getconfig failed: ${err}\n`)
   }
   return typingTicket
 }
@@ -274,7 +287,7 @@ async function sendTyping(toUserId: string, contextToken: string): Promise<void>
       base_info: { channel_version: '1.0.0' },
     })
   } catch (err) {
-    process.stderr.write(`wechat agent-bridge: sendtyping failed: ${err}\n`)
+    process.stderr.write(`wechat acp-bridge: sendtyping failed: ${err}\n`)
   }
 }
 
@@ -334,7 +347,7 @@ async function uploadMedia(filePath: string, toUserId: string, mediaType: number
       throw new Error(`CDN upload failed: ${putRes.status}`)
     }
     if (attempt < MAX_CDN_RETRIES) {
-      process.stderr.write(`wechat agent-bridge: CDN upload attempt ${attempt} failed (${putRes.status}), retrying...\n`)
+      process.stderr.write(`wechat acp-bridge: CDN upload attempt ${attempt} failed (${putRes.status}), retrying...\n`)
       await Bun.sleep(1000 * attempt)
     } else {
       throw new Error(`CDN upload failed after ${MAX_CDN_RETRIES} attempts: ${putRes.status}`)
@@ -433,7 +446,7 @@ function readAccessFile(): Access {
     try {
       renameSync(ACCESS_FILE, `${ACCESS_FILE}.corrupt-${Date.now()}`)
     } catch {}
-    process.stderr.write(`wechat agent-bridge: access.json is corrupt, moved aside. Starting fresh.\n`)
+    process.stderr.write(`wechat acp-bridge: access.json is corrupt, moved aside. Starting fresh.\n`)
     return defaultAccess()
   }
 }
@@ -682,7 +695,7 @@ async function downloadAttachment(attachmentId: string): Promise<string | null> 
       finalPath = outPath.replace(/\.silk$/, '.wav')
       writeFileSync(finalPath, wav, { mode: 0o600 })
     } catch (err) {
-      process.stderr.write(`wechat agent-bridge: silk transcode failed: ${err}\n`)
+      process.stderr.write(`wechat acp-bridge: silk transcode failed: ${err}\n`)
     }
   }
 
@@ -690,62 +703,354 @@ async function downloadAttachment(attachmentId: string): Promise<string | null> 
   return finalPath
 }
 
-// --- Session management ---
+// --- ACP Client implementation ---
 
-type SessionMap = Record<string, string>  // userId → sessionId
+class WeChatAcpClient implements acp.Client {
+  private chunks: string[] = []
+  private lastTypingAt = 0
+  private static readonly TYPING_INTERVAL_MS = 5_000
+  private sendTypingFn: () => Promise<void>
+  private logFn: (msg: string) => void
 
-function loadSessions(): SessionMap {
-  try { return JSON.parse(readFileSync(SESSIONS_FILE, 'utf8')) } catch { return {} }
-}
-
-function saveSessions(sessions: SessionMap): void {
-  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
-  const tmp = SESSIONS_FILE + '.tmp'
-  writeFileSync(tmp, JSON.stringify(sessions, null, 2) + '\n', { mode: 0o600 })
-  renameSync(tmp, SESSIONS_FILE)
-}
-
-// --- Claude Code CLI bridge ---
-
-async function queryClaudeSDK(prompt: string, userId: string): Promise<string> {
-  const sessions = loadSessions()
-  const sessionId = sessions[userId]
-
-  const args = ['-p', prompt, '--bare', '--output-format', 'json',
-    '--allowedTools', 'Bash,Read,Edit,Write']
-  if (sessionId) {
-    args.push('--resume', sessionId)
+  constructor(opts: { sendTyping: () => Promise<void>; log: (msg: string) => void }) {
+    this.sendTypingFn = opts.sendTyping
+    this.logFn = opts.log
   }
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn('claude', args, {
-      env: { ...process.env },  // ANTHROPIC_API_KEY from env
-      cwd: process.cwd(),
-    })
+  updateSendTyping(sendTypingFn: () => Promise<void>): void {
+    this.sendTypingFn = sendTypingFn
+  }
 
-    let stdout = ''
-    let stderr = ''
-    proc.stdout.on('data', (d: Buffer) => { stdout += d })
-    proc.stderr.on('data', (d: Buffer) => { stderr += d })
+  async requestPermission(
+    params: acp.RequestPermissionRequest,
+  ): Promise<acp.RequestPermissionResponse> {
+    const allowOpt = params.options.find(
+      (o) => o.kind === 'allow_once' || o.kind === 'allow_always',
+    )
+    const optionId = allowOpt?.optionId ?? params.options[0]?.optionId ?? 'allow'
 
-    proc.on('close', (code) => {
-      if (code !== 0 && !stdout) {
-        reject(new Error(`claude exited ${code}: ${stderr}`))
-        return
-      }
-      try {
-        const result = JSON.parse(stdout)
-        // Update session ID for next turn
-        if (result.session_id) {
-          sessions[userId] = result.session_id
-          saveSessions(sessions)
+    this.logFn(`[permission] auto-allowed: ${params.toolCall?.title ?? 'unknown'} → ${optionId}`)
+
+    return {
+      outcome: {
+        outcome: 'selected',
+        optionId,
+      },
+    }
+  }
+
+  async sessionUpdate(params: acp.SessionNotification): Promise<void> {
+    const update = params.update
+
+    switch (update.sessionUpdate) {
+      case 'agent_message_chunk':
+        if (update.content.type === 'text') {
+          this.chunks.push(update.content.text)
         }
-        resolve(result.result ?? result.text ?? stdout)
-      } catch {
-        resolve(stdout)  // fallback: raw output
-      }
-    })
+        await this.maybeSendTyping()
+        break
+
+      case 'tool_call':
+        this.logFn(`[tool] ${update.title} (${update.status})`)
+        await this.maybeSendTyping()
+        break
+
+      case 'tool_call_update':
+        if (update.status === 'completed' && update.content) {
+          for (const c of update.content) {
+            if (c.type === 'diff') {
+              const diff = c as acp.Diff
+              const header = `--- ${diff.path}`
+              const lines: string[] = [header]
+              if (diff.oldText != null) {
+                for (const l of diff.oldText.split('\n')) lines.push(`- ${l}`)
+              }
+              if (diff.newText != null) {
+                for (const l of diff.newText.split('\n')) lines.push(`+ ${l}`)
+              }
+              this.chunks.push('\n```diff\n' + lines.join('\n') + '\n```\n')
+            }
+          }
+        }
+        if (update.status) {
+          this.logFn(`[tool] ${update.toolCallId} → ${update.status}`)
+        }
+        break
+
+      case 'plan':
+        if (update.entries) {
+          const items = update.entries
+            .map((e: acp.PlanEntry, i: number) => `  ${i + 1}. [${e.status}] ${e.content}`)
+            .join('\n')
+          this.logFn(`[plan]\n${items}`)
+        }
+        break
+    }
+  }
+
+  async readTextFile(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
+    try {
+      const content = await fs.promises.readFile(params.path, 'utf-8')
+      return { content }
+    } catch (err) {
+      throw new Error(`Failed to read file ${params.path}: ${String(err)}`)
+    }
+  }
+
+  async writeTextFile(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse> {
+    try {
+      await fs.promises.writeFile(params.path, params.content, 'utf-8')
+      return {}
+    } catch (err) {
+      throw new Error(`Failed to write file ${params.path}: ${String(err)}`)
+    }
+  }
+
+  flush(): string {
+    const text = this.chunks.join('')
+    this.chunks = []
+    this.lastTypingAt = 0
+    return text
+  }
+
+  private async maybeSendTyping(): Promise<void> {
+    const now = Date.now()
+    if (now - this.lastTypingAt < WeChatAcpClient.TYPING_INTERVAL_MS) return
+    this.lastTypingAt = now
+    try {
+      await this.sendTypingFn()
+    } catch {
+      // typing is best-effort
+    }
+  }
+}
+
+// --- ACP session management ---
+
+type UserSession = {
+  userId: string
+  contextToken: string
+  client: WeChatAcpClient
+  process: ChildProcess
+  connection: acp.ClientSideConnection
+  sessionId: string
+  queue: Array<{ prompt: acp.ContentBlock[]; contextToken: string }>
+  processing: boolean
+  lastActivity: number
+}
+
+const userSessions = new Map<string, UserSession>()
+
+// Idle session cleanup every 2 minutes
+const cleanupTimer = setInterval(() => {
+  if (IDLE_TIMEOUT_MS <= 0) return
+  const now = Date.now()
+  for (const [userId, session] of userSessions) {
+    if (now - session.lastActivity > IDLE_TIMEOUT_MS && !session.processing) {
+      process.stderr.write(`wechat acp-bridge: session for ${userId} idle for ${Math.round((now - session.lastActivity) / 60_000)}min, removing\n`)
+      if (!session.process.killed) session.process.kill('SIGTERM')
+      userSessions.delete(userId)
+    }
+  }
+}, 2 * 60_000)
+cleanupTimer.unref()
+
+function evictOldestSession(): void {
+  let oldest: { userId: string; lastActivity: number } | null = null
+  for (const [uid, s] of userSessions) {
+    if (!s.processing && (!oldest || s.lastActivity < oldest.lastActivity)) {
+      oldest = { userId: uid, lastActivity: s.lastActivity }
+    }
+  }
+  if (oldest) {
+    process.stderr.write(`wechat acp-bridge: evicting oldest idle session: ${oldest.userId}\n`)
+    const s = userSessions.get(oldest.userId)
+    if (s && !s.process.killed) s.process.kill('SIGTERM')
+    userSessions.delete(oldest.userId)
+  }
+}
+
+async function createSession(userId: string, contextToken: string): Promise<UserSession> {
+  process.stderr.write(`wechat acp-bridge: creating session for ${userId}\n`)
+
+  const client = new WeChatAcpClient({
+    sendTyping: () => sendTyping(userId, contextToken),
+    log: (msg) => process.stderr.write(`wechat acp-bridge [${userId}]: ${msg}\n`),
   })
+
+  // Spawn agent subprocess
+  const useShell = process.platform === 'win32'
+  const proc = spawn(AGENT_COMMAND, AGENT_ARGS, {
+    stdio: ['pipe', 'pipe', 'inherit'],
+    cwd: AGENT_CWD,
+    env: { ...process.env, ...AGENT_ENV },
+    shell: useShell,
+  })
+
+  proc.on('error', (err) => {
+    process.stderr.write(`wechat acp-bridge [${userId}]: agent process error: ${String(err)}\n`)
+  })
+
+  if (!proc.stdin || !proc.stdout) {
+    proc.kill()
+    throw new Error('Failed to get agent process stdio')
+  }
+
+  // Set up ACP connection
+  const input = Writable.toWeb(proc.stdin)
+  const output = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>
+  const stream = acp.ndJsonStream(input, output)
+  const connection = new acp.ClientSideConnection(() => client, stream)
+
+  // Initialize ACP
+  process.stderr.write(`wechat acp-bridge [${userId}]: initializing ACP connection...\n`)
+  const initResult = await connection.initialize({
+    protocolVersion: acp.PROTOCOL_VERSION,
+    clientInfo: {
+      name: 'wechat-acp-bridge',
+      title: 'WeChat ACP Bridge',
+      version: '1.0.0',
+    },
+    clientCapabilities: {
+      fs: {
+        readTextFile: true,
+        writeTextFile: true,
+      },
+    },
+  })
+  process.stderr.write(`wechat acp-bridge [${userId}]: ACP initialized (protocol v${initResult.protocolVersion})\n`)
+
+  // Create session
+  const sessionResult = await connection.newSession({
+    cwd: AGENT_CWD,
+    mcpServers: [],
+  })
+  process.stderr.write(`wechat acp-bridge [${userId}]: session created (sessionId=${sessionResult.sessionId})\n`)
+
+  const session: UserSession = {
+    userId,
+    contextToken,
+    client,
+    process: proc,
+    connection,
+    sessionId: sessionResult.sessionId,
+    queue: [],
+    processing: false,
+    lastActivity: Date.now(),
+  }
+
+  // Clean up on process exit
+  proc.on('exit', (code, signal) => {
+    process.stderr.write(`wechat acp-bridge [${userId}]: agent exited code=${code} signal=${signal}\n`)
+    const s = userSessions.get(userId)
+    if (s?.process === proc) userSessions.delete(userId)
+  })
+
+  userSessions.set(userId, session)
+  return session
+}
+
+async function processQueue(session: UserSession): Promise<void> {
+  try {
+    while (session.queue.length > 0 && !shuttingDown) {
+      const pending = session.queue.shift()!
+
+      // Update typing callback to use latest context_token
+      session.client.updateSendTyping(() =>
+        sendTyping(session.userId, pending.contextToken),
+      )
+
+      // Reset chunks for the new turn
+      session.client.flush()
+
+      try {
+        // Send typing immediately
+        sendTyping(session.userId, pending.contextToken).catch(() => {})
+
+        // Send ACP prompt
+        process.stderr.write(`wechat acp-bridge [${session.userId}]: sending prompt to agent...\n`)
+        const result = await session.connection.prompt({
+          sessionId: session.sessionId,
+          prompt: pending.prompt,
+        })
+
+        // Collect accumulated text
+        let replyText = session.client.flush()
+
+        if (result.stopReason === 'cancelled') {
+          replyText += '\n[cancelled]'
+        } else if (result.stopReason === 'refusal') {
+          replyText += '\n[agent refused to continue]'
+        }
+
+        process.stderr.write(`wechat acp-bridge [${session.userId}]: agent done (${result.stopReason}), reply ${replyText.length} chars\n`)
+
+        // Send reply back to WeChat
+        if (replyText.trim()) {
+          const plainText = markdownToPlaintext(replyText)
+          const access = loadAccess()
+          const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
+          const chunks = chunk(plainText, limit)
+
+          for (const c of chunks) {
+            if (access.humanDelay && chunks.length > 1) {
+              await Bun.sleep(Math.min(c.length * 50, 3000))
+            }
+            await sendMessage(session.userId, c, pending.contextToken)
+          }
+        }
+
+        cancelTyping(session.userId).catch(() => {})
+      } catch (err) {
+        process.stderr.write(`wechat acp-bridge [${session.userId}]: agent prompt error: ${String(err)}\n`)
+
+        // Check if agent died
+        if (session.process.killed || session.process.exitCode !== null) {
+          process.stderr.write(`wechat acp-bridge [${session.userId}]: agent process died, removing session\n`)
+          userSessions.delete(session.userId)
+          return
+        }
+
+        // Send error message to user
+        try {
+          await sendMessage(
+            session.userId,
+            `⚠️ Agent error: ${String(err)}`,
+            pending.contextToken,
+          )
+        } catch {
+          // best effort
+        }
+      }
+    }
+  } finally {
+    session.processing = false
+  }
+}
+
+async function enqueueMessage(userId: string, promptBlocks: acp.ContentBlock[], contextToken: string): Promise<void> {
+  let session = userSessions.get(userId)
+
+  if (!session || session.process.killed || session.process.exitCode !== null) {
+    // Need a new session
+    if (userSessions.has(userId)) userSessions.delete(userId)
+    if (userSessions.size >= MAX_CONCURRENT_USERS) {
+      evictOldestSession()
+    }
+    session = await createSession(userId, contextToken)
+  }
+
+  // Always update contextToken to the latest
+  session.contextToken = contextToken
+  session.lastActivity = Date.now()
+  session.queue.push({ prompt: promptBlocks, contextToken })
+
+  if (!session.processing) {
+    session.processing = true
+    processQueue(session).catch((err) => {
+      process.stderr.write(`wechat acp-bridge [${userId}]: queue processing error: ${String(err)}\n`)
+    })
+  }
 }
 
 // --- Inbound message handler ---
@@ -774,7 +1079,7 @@ async function handleInbound(msg: any): Promise<void> {
         `${lead} — 在 Claude Code 终端运行：\n\n/wechat:access pair ${result.code}`,
         ct,
       ).catch((err: any) => {
-        process.stderr.write(`wechat agent-bridge: pairing reply failed: ${err}\n`)
+        process.stderr.write(`wechat acp-bridge: pairing reply failed: ${err}\n`)
       })
     }
     return
@@ -807,7 +1112,7 @@ async function handleInbound(msg: any): Promise<void> {
         const localPath = await downloadAttachment(aid)
         if (localPath) downloadedPaths.push(localPath)
       } catch (err) {
-        process.stderr.write(`wechat agent-bridge: attachment download failed (${aid}): ${err}\n`)
+        process.stderr.write(`wechat acp-bridge: attachment download failed (${aid}): ${err}\n`)
       }
     }
     if (downloadedPaths.length > 0) {
@@ -815,35 +1120,9 @@ async function handleInbound(msg: any): Promise<void> {
     }
   }
 
-  // Query Claude Code via CLI
-  try {
-    if (msg.context_token) {
-      sendTyping(senderId, msg.context_token).catch(() => {})
-    }
-
-    const response = await queryClaudeSDK(promptText, senderId)
-
-    // Convert markdown and chunk the response
-    const plainText = markdownToPlaintext(response)
-    const access = loadAccess()
-    const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
-    const chunks = chunk(plainText, limit)
-
-    for (const c of chunks) {
-      if (access.humanDelay && chunks.length > 1) {
-        await Bun.sleep(Math.min(c.length * 50, 3000))
-      }
-      await sendMessage(senderId, c, msg.context_token)
-    }
-
-    cancelTyping(senderId).catch(() => {})
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    process.stderr.write(`wechat agent-bridge: claude query failed: ${errMsg}\n`)
-    if (msg.context_token) {
-      await sendMessage(senderId, `⚠️ Claude Code 响应失败: ${errMsg}`, msg.context_token).catch(() => {})
-    }
-  }
+  // Send to ACP agent via session queue
+  const promptBlocks: acp.ContentBlock[] = [{ type: 'text', text: promptText }]
+  await enqueueMessage(senderId, promptBlocks, msg.context_token)
 }
 
 // --- Long-poll loop ---
@@ -867,11 +1146,11 @@ async function pollLoop(): Promise<void> {
 
       if (resp.ret !== undefined && resp.ret !== 0) {
         if (resp.ret === -14 || resp.errcode === -14) {
-          process.stderr.write('wechat agent-bridge: session expired (ret=-14), stopping poll\n')
+          process.stderr.write('wechat acp-bridge: session expired (ret=-14), stopping poll\n')
           break
         }
         failures++
-        process.stderr.write(`wechat agent-bridge: getUpdates error ret=${resp.ret} errmsg=${resp.errmsg ?? ''} (${failures}/${MAX_FAILURES})\n`)
+        process.stderr.write(`wechat acp-bridge: getUpdates error ret=${resp.ret} errmsg=${resp.errmsg ?? ''} (${failures}/${MAX_FAILURES})\n`)
         if (failures >= MAX_FAILURES) {
           failures = 0
           await Bun.sleep(BACKOFF_MS)
@@ -893,12 +1172,12 @@ async function pollLoop(): Promise<void> {
       const msgs = resp.msgs ?? []
       for (const msg of msgs) {
         await handleInbound(msg).catch((err: any) => {
-          process.stderr.write(`wechat agent-bridge: message handler error: ${err}\n`)
+          process.stderr.write(`wechat acp-bridge: message handler error: ${err}\n`)
         })
       }
     } catch (err) {
       failures++
-      process.stderr.write(`wechat agent-bridge: poll error (${failures}/${MAX_FAILURES}): ${err}\n`)
+      process.stderr.write(`wechat acp-bridge: poll error (${failures}/${MAX_FAILURES}): ${err}\n`)
       if (failures >= MAX_FAILURES) {
         failures = 0
         await Bun.sleep(BACKOFF_MS)
@@ -908,13 +1187,13 @@ async function pollLoop(): Promise<void> {
     }
   }
 
-  process.stderr.write('wechat agent-bridge: poll loop stopped\n')
+  process.stderr.write('wechat acp-bridge: poll loop stopped\n')
 }
 
 // --- Start ---
 
-process.stderr.write(`wechat agent-bridge: started (Agent SDK mode, API Key)\n`)
-process.stderr.write(`wechat agent-bridge: long-poll started (${BASE_URL})\n`)
+process.stderr.write(`wechat acp-bridge: started (ACP mode, agent=${AGENT_COMMAND} ${AGENT_ARGS.join(' ')})\n`)
+process.stderr.write(`wechat acp-bridge: long-poll started (${BASE_URL})\n`)
 
 pollLoop()
 
@@ -923,7 +1202,7 @@ pollLoop()
 function shutdown(reason: string): void {
   if (shuttingDown) return
   shuttingDown = true
-  process.stderr.write(`wechat agent-bridge: shutting down (${reason})\n`)
+  process.stderr.write(`wechat acp-bridge: shutting down (${reason})\n`)
 
   // Persist any pending context tokens
   if (persistTimer) {
@@ -932,13 +1211,29 @@ function shutdown(reason: string): void {
     persistContextTokens()
   }
 
+  // Kill all agent sessions
+  for (const [uid, s] of userSessions) {
+    process.stderr.write(`wechat acp-bridge: stopping session for ${uid}\n`)
+    if (!s.process.killed) {
+      s.process.kill('SIGTERM')
+      // Force kill after 5s if still alive
+      setTimeout(() => {
+        if (!s.process.killed) s.process.kill('SIGKILL')
+      }, 5_000).unref()
+    }
+  }
+  userSessions.clear()
+
+  // Clear idle cleanup timer
+  clearInterval(cleanupTimer)
+
   const forceTimer = setTimeout(() => {
-    process.stderr.write('wechat agent-bridge: force exit after timeout\n')
+    process.stderr.write('wechat acp-bridge: force exit after timeout\n')
     process.exit(0)
   }, 2000)
   forceTimer.unref()
 
-  // No MCP to close — just exit after a short delay for pending I/O
+  // Exit after a short delay for pending I/O
   setTimeout(() => {
     clearTimeout(forceTimer)
     process.exit(0)
@@ -950,9 +1245,9 @@ process.stdin.on('error', () => shutdown('stdin error'))
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
 process.on('unhandledRejection', (err) => {
-  process.stderr.write(`wechat agent-bridge: unhandled rejection: ${err}\n`)
+  process.stderr.write(`wechat acp-bridge: unhandled rejection: ${err}\n`)
 })
 process.on('uncaughtException', (err) => {
-  process.stderr.write(`wechat agent-bridge: uncaught exception: ${err}\n`)
+  process.stderr.write(`wechat acp-bridge: uncaught exception: ${err}\n`)
   shutdown('uncaughtException')
 })
