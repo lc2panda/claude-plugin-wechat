@@ -6,105 +6,82 @@ WeChat (微信) plugin for [Claude Code](https://claude.ai/claude-code) — text
 
 <img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
 
----
+## Two modes / 两种模式
 
-## For humans / 给人看的
-
-### Two modes / 两种模式
-
-| | Channel mode | ACP mode |
+| | **Channel** | **ACP** |
 |---|---|---|
 | **Who / 适用** | claude.ai subscribers | API Key / any provider |
-| **What / 特点** | Full features, permission relay via WeChat | Works with Claude, Copilot, Gemini, Codex, Qwen... |
-| **Install / 安装** | Plugin marketplace | `bun add -g` or `npx` |
+| **Features / 特点** | Full features, permission relay | Claude, Copilot, Gemini, Codex, Qwen... |
+| **Install / 安装** | Plugin marketplace | `bun add -g` or `bunx` |
 
-> Not sure which? If you logged into Claude Code via `claude.ai`, use **Channel**. If you use an API key, use **ACP**.
->
-> 不确定用哪个？用 claude.ai 登录的选 **Channel**，用 API Key 的选 **ACP**。
+> claude.ai login → **Channel** / API Key → **ACP**
 
 ---
 
-### Channel mode / 频道模式
+<details>
+<summary><b>Channel mode / 频道模式</b>（click to expand / 点击展开）</summary>
 
-**Step 1 — Install plugin / 安装插件**
+**1. Install / 安装**
 ```bash
 claude plugin marketplace add lc2panda/claude-plugin-wechat
 claude plugin install wechat@lc2panda-plugins
 ```
 
-**Step 2 — Login / 微信登录**
+**2. Login / 登录** — Run `/wechat:configure login` in Claude Code, scan QR.
 
-Run `/wechat:configure login` in Claude Code, scan QR with WeChat.
+在 Claude Code 中执行 `/wechat:configure login`，微信扫码。
 
-在 Claude Code 中执行 `/wechat:configure login`，用微信扫码。
-
-**Step 3 — Start / 启动**
+**3. Start / 启动**
 ```bash
-# Auto-approve (faster) / 自动授权（更快）
+# Auto-approve / 自动授权
 claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 
-# Or manual confirm (safer, approve via WeChat) / 手动确认（更安全，通过微信审批）
+# Manual confirm (approve via WeChat) / 手动确认（微信审批）
 claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-**Step 4 — Pair / 配对**
+**4. Pair / 配对** — WeChat send message → get code → `/wechat:access pair <code>`
 
-Send any message to the bot on WeChat → get a 6-char code → run `/wechat:access pair <code>` in terminal.
+微信发消息 → 收到配对码 → `/wechat:access pair <配对码>`
 
-微信给机器人发消息 → 收到配对码 → 终端执行 `/wechat:access pair <配对码>`
+</details>
 
----
+<details>
+<summary><b>ACP mode / ACP 模式</b>（click to expand / 点击展开）</summary>
 
-### ACP mode / ACP 模式
-
-**Step 1 — Install / 安装（choose one / 任选一种）**
+**1. Install / 安装**
 ```bash
-# Global install (recommended) / 全局安装（推荐）
-bun add -g claude-plugin-wechat
-
-# Or zero-install / 或免安装
-bunx claude-plugin-wechat
+bun add -g claude-plugin-wechat    # Global install / 全局安装
+# or: bunx claude-plugin-wechat    # Zero-install / 免安装
 ```
 
-**Step 2 — Login / 微信登录**
+**2. Login / 登录** — Same credentials as Channel mode. First time:
 
-First time only. Run in the plugin directory:
-
-仅首次需要。在插件目录执行：
+与 Channel 模式共享凭据。首次登录：
 ```bash
-# If globally installed / 如果全局安装了
 cd $(bun pm -g bin)/../lib/node_modules/claude-plugin-wechat && bun login-qr.ts
-# Then poll: bun login-poll.ts "<qrcode_token>"
+# Then: bun login-poll.ts "<qrcode_token>"
 ```
-Or install the Channel mode plugin first — they share the same credentials.
+Or install Channel mode plugin first — they share credentials.
 
-或者先装一次 Channel 模式的插件，两种模式共享登录凭据。
+或先装 Channel 模式插件，两者共享登录。
 
-**Step 3 — Start / 启动**
+**3. Start / 启动**
 ```bash
-wechat-acp                             # Default: Claude Code agent
-wechat-acp --cwd /path/to/project      # Specify default working directory
-ACP_AGENT=gemini wechat-acp            # Use Gemini instead
-ACP_AGENT=copilot wechat-acp           # Use GitHub Copilot
+wechat-acp                             # Default: Claude Code
+wechat-acp --cwd /path/to/project      # Specify working directory
+ACP_AGENT=gemini wechat-acp            # Gemini
+ACP_AGENT=copilot wechat-acp           # GitHub Copilot
 ```
 
-**Step 4 — Pair / 配对**
+**4. Pair / 配对** — Same as Channel: send message → get code → `/wechat:access pair <code>`
 
-Same as Channel mode — send message → get code → `/wechat:access pair <code>`
+和 Channel 一样：发消息 → 配对码 → `/wechat:access pair <配对码>`
 
-和 Channel 模式一样 — 发消息 → 收到配对码 → `/wechat:access pair <配对码>`
+</details>
 
-**Switch project from WeChat / 微信端切换项目目录：**
-```
-/cwd /path/to/new/project
-```
-Agent session resets and starts in the new directory. No need to restart the bridge.
-
-Agent 会话重置并在新目录启动，无需重启服务。
-
----
-
-### WeChat commands / 微信命令
+<details>
+<summary><b>WeChat commands / 微信命令</b>（click to expand / 点击展开）</summary>
 
 | Command | Effect |
 |---------|--------|
@@ -112,20 +89,28 @@ Agent 会话重置并在新目录启动，无需重启服务。
 | `/toggle-debug` | Toggle debug mode / 切换调试模式 |
 | `/echo <text>` | Echo with latency / 回显并显示延迟 |
 
-### Third-party API / 第三方 API
+</details>
 
-ACP mode works with any Anthropic-compatible API (GLM, Kimi, 文心, etc.). Set via env:
+<details>
+<summary><b>Third-party API / 第三方 API</b>（GLM, Kimi, 文心 etc.）</summary>
 
-ACP 模式支持任何兼容 Anthropic SDK 协议的 API。通过环境变量配置：
+ACP mode works with any Anthropic-compatible API. Set via env:
+
+ACP 模式支持任何兼容 Anthropic SDK 协议的 API：
 ```bash
 ANTHROPIC_BASE_URL=https://your-provider/v1 ANTHROPIC_API_KEY=your-key wechat-acp
 ```
 
-### Prerequisites / 前置条件
+</details>
+
+<details>
+<summary><b>Prerequisites / 前置条件</b></summary>
 
 - [Bun](https://bun.sh) runtime (`curl -fsSL https://bun.sh/install | bash`)
-- Channel mode: [Claude Code](https://claude.ai/claude-code) v2.1.80+, claude.ai login
-- ACP mode: Any API key or provider
+- Channel: [Claude Code](https://claude.ai/claude-code) v2.1.80+, claude.ai login
+- ACP: Any API key or provider
+
+</details>
 
 ### Related / 相关项目
 
