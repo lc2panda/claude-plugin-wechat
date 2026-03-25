@@ -66,6 +66,7 @@ const AGENT_ARGS = process.env.ACP_AGENT_ARGS
 // Parse CLI arguments
 const cliArgs = process.argv.slice(2)
 let defaultCwd = process.env.ACP_AGENT_CWD ?? process.cwd()
+let forceLogin = false
 for (let i = 0; i < cliArgs.length; i++) {
   if (cliArgs[i] === '--cwd' && cliArgs[i + 1]) {
     defaultCwd = cliArgs[i + 1]
@@ -73,7 +74,7 @@ for (let i = 0; i < cliArgs.length; i++) {
   } else if (cliArgs[i]?.startsWith('--cwd=')) {
     defaultCwd = cliArgs[i].split('=')[1]
   } else if (cliArgs[i] === '--login') {
-    // Will handle later
+    forceLogin = true
   }
 }
 
@@ -116,14 +117,145 @@ function loadCredentials(): Credentials | null {
   }
 }
 
-const creds = loadCredentials()
+// --- Inline QR login flow ---
+
+const WECHAT_BASE = 'https://ilinkai.weixin.qq.com/'
+const QR_POLL_INTERVAL_MS = 3000
+const QR_TIMEOUT_MS = 5 * 60_000
+const MAX_QR_REFRESHES = 3
+
+function saveCredentials(data: any): void {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+  const tmp = CREDENTIALS_FILE + '.tmp'
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })
+  renameSync(tmp, CREDENTIALS_FILE)
+}
+
+function addToAllowlist(userId: string): void {
+  let access: any
+  try {
+    access = JSON.parse(readFileSync(ACCESS_FILE, 'utf8'))
+  } catch {
+    access = { dmPolicy: 'pairing', allowFrom: [], pending: {} }
+  }
+  if (!access.allowFrom) access.allowFrom = []
+  if (!access.allowFrom.includes(userId)) {
+    access.allowFrom.push(userId)
+  }
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+  const tmp = ACCESS_FILE + '.tmp'
+  writeFileSync(tmp, JSON.stringify(access, null, 2) + '\n', { mode: 0o600 })
+  renameSync(tmp, ACCESS_FILE)
+}
+
+async function interactiveLogin(): Promise<Credentials> {
+  process.stderr.write('\n=== WeChat QR Login / 微信扫码登录 ===\n\n')
+
+  // Step 1: Fetch QR code
+  const qrRes = await fetch(`${WECHAT_BASE}ilink/bot/get_bot_qrcode?bot_type=3`)
+  if (!qrRes.ok) {
+    process.stderr.write(`Failed to get QR code: ${qrRes.status}\n`)
+    process.exit(1)
+  }
+  const qrData = await qrRes.json() as any
+  let currentQrcode: string = qrData.qrcode
+  const qrUrl: string = qrData.qrcode_img_content
+
+  // Render QR in terminal
+  const qt = (await import('qrcode-terminal')).default
+  qt.generate(qrUrl, { small: true })
+  process.stderr.write('\nScan with WeChat, confirm on phone.\n用微信扫描上方二维码，手机确认。\n\n')
+
+  // Step 2: Poll for status
+  let refreshCount = 0
+  let deadline = Date.now() + QR_TIMEOUT_MS
+  let scannedShown = false
+
+  while (Date.now() < deadline) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 35000)
+    let resp: any
+    try {
+      const res = await fetch(
+        `${WECHAT_BASE}ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(currentQrcode)}`,
+        { signal: controller.signal },
+      )
+      clearTimeout(timer)
+      if (!res.ok) throw new Error(`poll failed: ${res.status}`)
+      resp = await res.json()
+    } catch (err: any) {
+      clearTimeout(timer)
+      if (err?.name === 'AbortError') {
+        resp = { status: 'wait' }
+      } else {
+        throw err
+      }
+    }
+
+    switch (resp.status) {
+      case 'wait':
+        break
+
+      case 'scaned':
+        if (!scannedShown) {
+          process.stderr.write('Scanned! Confirm on phone... / 已扫描，请在手机上确认...\n')
+          scannedShown = true
+        }
+        break
+
+      case 'expired': {
+        if (refreshCount >= MAX_QR_REFRESHES) {
+          process.stderr.write('QR expired, max retries reached. / 二维码已过期，超过最大重试次数。\n')
+          process.exit(1)
+        }
+        refreshCount++
+        process.stderr.write(`QR expired, refreshing (${refreshCount}/${MAX_QR_REFRESHES})... / 二维码过期，自动刷新...\n`)
+        try {
+          const refreshRes = await fetch(`${WECHAT_BASE}ilink/bot/get_bot_qrcode?bot_type=3`)
+          if (!refreshRes.ok) { process.stderr.write('Failed to refresh QR.\n'); process.exit(1) }
+          const refreshData = await refreshRes.json() as any
+          currentQrcode = refreshData.qrcode
+          const newUrl = refreshData.qrcode_img_content
+          qt.generate(newUrl, { small: true })
+          process.stderr.write('\nScan the new QR code. / 请扫描新二维码。\n\n')
+        } catch {
+          process.stderr.write('Failed to refresh QR.\n')
+          process.exit(1)
+        }
+        scannedShown = false
+        deadline = Date.now() + QR_TIMEOUT_MS
+        break
+      }
+
+      case 'confirmed': {
+        const creds: Credentials = {
+          token: resp.bot_token,
+          baseUrl: resp.baseurl ?? WECHAT_BASE,
+          accountId: resp.ilink_bot_id,
+          userId: resp.ilink_user_id,
+        }
+        saveCredentials(creds)
+        if (creds.userId) addToAllowlist(creds.userId)
+        process.stderr.write('\n✅ Login successful! / 登录成功！\n\n')
+        return creds
+      }
+    }
+
+    await Bun.sleep(QR_POLL_INTERVAL_MS)
+  }
+
+  process.stderr.write('Login timeout. / 登录超时。\n')
+  process.exit(1)
+}
+
+// --- Load or acquire credentials ---
+
+let creds = forceLogin ? null : loadCredentials()
 
 if (!creds?.token || !creds?.baseUrl) {
-  process.stderr.write(
-    `wechat acp-bridge: credentials required\n` +
-    `  run /wechat:configure in Claude Code to scan QR and login\n`,
-  )
-  process.exit(1)
+  process.stderr.write('wechat-acp: No credentials found, starting login...\n')
+  process.stderr.write('wechat-acp: 未检测到登录凭据，开始扫码登录...\n\n')
+  creds = await interactiveLogin()
 }
 
 const TOKEN = creds.token
