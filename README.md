@@ -63,16 +63,16 @@ claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 <details>
 <summary><b>ACP mode / ACP 模式</b>（click to expand / 点击展开）</summary>
 
-> Works on **macOS / Linux / Windows**. All commands below are typed in your **terminal** (Terminal.app / PowerShell / CMD).
+> **macOS / Linux / Windows** — all commands typed in your **terminal** (Terminal.app / PowerShell / CMD).
 >
 > 适用于 **macOS / Linux / Windows**，以下命令均在你电脑的**终端**中输入。
 
-**Step 0 — Install Bun runtime / 安装 Bun 运行时**
+**Step 1 — Install / 安装**
 
-> Skip if you already have Bun (`bun --version` to check).
->
-> 如果已安装可跳过（`bun --version` 检查）。
+<details>
+<summary>1a. Install Bun (skip if already have) / 安装 Bun（已有则跳过）</summary>
 
+Check: `bun --version`. If not installed:
 ```bash
 # macOS / Linux
 curl -fsSL https://bun.sh/install | bash
@@ -80,103 +80,72 @@ curl -fsSL https://bun.sh/install | bash
 # Windows (PowerShell)
 powershell -c "irm bun.sh/install.ps1 | iex"
 ```
+</details>
 
-**Step 1 — Install plugin / 安装插件**
-
-Open a terminal, type:
-
-打开终端，输入：
+1b. Install the plugin globally / 全局安装插件：
 ```bash
 bun add -g claude-plugin-wechat
 ```
-Done. Now `wechat-acp` command is available globally — you can run it from any folder.
+Done. `wechat-acp` is now available from any folder.
 
-完成。`wechat-acp` 命令现在全局可用，可以在任意目录运行。
+完成，`wechat-acp` 命令现在在任意目录都能用。
 
-**Step 2 — WeChat login / 微信登录（only once / 仅首次）**
+**Step 2 — Start / 启动**
 
-> If you already used Channel mode, skip this — they share the same login.
->
-> 如果你已用过 Channel 模式，跳过此步，两者共享登录。
-
-In terminal:
-
-在终端输入：
-```bash
-cd $(bun pm -g bin)/../lib/node_modules/claude-plugin-wechat
-bun login-qr.ts
-```
-A QR code appears in terminal → scan with WeChat → confirm on phone.
-
-终端显示二维码 → 微信扫码 → 手机确认。
-
-Then paste the `qrcode` token from the output and run:
-
-然后把输出中的 `qrcode` 值粘贴执行：
-```bash
-bun login-poll.ts "paste_qrcode_token_here"
-```
-Wait for "success" → login complete.
-
-等待显示成功 → 登录完成。
-
-**Step 3 — Start / 启动**
-
-In terminal, from any folder:
-
-在终端，任意目录下输入：
 ```bash
 wechat-acp
 ```
-That's it. The bridge is running. Keep this terminal window open.
 
-就这样，服务已启动。保持终端窗口开着。
+- **First run?** QR code appears automatically → scan with WeChat → confirm on phone → done, bridge starts.
+- **Already logged in?** Bridge starts immediately.
+
+- **首次运行？** 自动弹出二维码 → 微信扫码 → 手机确认 → 完成，服务启动。
+- **已登录过？** 直接启动。
+
+> Re-login anytime: `wechat-acp --login`
+>
+> 重新登录：`wechat-acp --login`
+
+Keep this terminal window open. The bridge is running.
+
+保持终端窗口开着，服务运行中。
+
+**Step 3 — Pair / 配对**
+
+1. WeChat send any message to the bot / 微信给机器人发消息
+2. Bot replies with a 6-char code / 收到 6 位配对码
+3. In a **new terminal**, run Claude Code and type: / 打开**新终端**启动 Claude Code，输入：`/wechat:access pair <code>`
+
+Done! Chat with AI from WeChat. / 完成！从微信和 AI 对话。
 
 <details>
-<summary>Advanced options / 进阶选项</summary>
+<summary><b>Advanced / 进阶</b></summary>
 
+**Switch project directory from WeChat / 微信端切换项目：**
+```
+/cwd /path/to/your/project
+```
+Agent restarts in the new directory. No terminal needed.
+
+Agent 在新目录重启，不用动终端。
+
+**Startup options / 启动选项：**
 ```bash
-wechat-acp --cwd /path/to/project      # Set default working directory / 指定默认工作目录
-ACP_AGENT=gemini wechat-acp            # Use Gemini instead of Claude / 用 Gemini
-ACP_AGENT=copilot wechat-acp           # Use GitHub Copilot / 用 Copilot
-ACP_AGENT=codex wechat-acp             # Use OpenAI Codex / 用 Codex
-ACP_AGENT=qwen wechat-acp              # Use Qwen / 用通义千问
+wechat-acp --cwd /path/to/project      # Default working directory / 默认工作目录
+ACP_AGENT=gemini wechat-acp            # Gemini
+ACP_AGENT=copilot wechat-acp           # GitHub Copilot
+ACP_AGENT=codex wechat-acp             # OpenAI Codex
+ACP_AGENT=qwen wechat-acp              # Qwen / 通义千问
 ```
 
-Third-party API / 第三方 API (GLM, Kimi, 文心...):
+**Third-party API / 第三方 API** (GLM, Kimi, 文心...):
 ```bash
 ANTHROPIC_BASE_URL=https://your-provider/v1 ANTHROPIC_API_KEY=your-key wechat-acp
 ```
 
 </details>
 
-**Step 4 — Pair / 配对**
-
-1. Open WeChat, send any message to the bot / 打开微信，给机器人发任意消息
-2. Bot replies with a 6-char code / 机器人回复一个 6 位配对码
-3. Open a **new terminal** (keep the bridge running), type: / 打开**新终端**输入：
-```bash
-# In Claude Code session:
-/wechat:access pair <code>
-```
-
-Now you can chat with AI from WeChat!
-
-现在可以从微信和 AI 对话了！
-
-**Switch project directory from WeChat / 微信端切换项目目录：**
-
-Send in WeChat / 在微信中发送：
-```
-/cwd /path/to/your/project
-```
-AI agent restarts in the new directory. No need to touch the terminal.
-
-AI 会话在新目录重启，不用动终端。
-
-**Stop / 停止：** Press `Ctrl+C` in the terminal running `wechat-acp`.
-
-按终端中的 `Ctrl+C` 停止服务。
+**Stop / 停止：** `Ctrl+C`
 
 </details>
 
@@ -295,48 +264,45 @@ Test message from WeChat → arrives as `<channel source="wechat" ...>` → repl
 
 For users with API key / Console / Bedrock / Vertex auth. Uses ACP (Agent Client Protocol) with persistent agent subprocess.
 
-#### Steps 1-5 — Same as Channel mode
+#### Step 1 — Install globally [HUMAN]
 
-Complete Steps 1-5 (dependencies, build, QR login).
-
-#### Step 6 — Start the bridge [HUMAN]
-
-**Option A — Global install (recommended, works from any directory):**
 ```bash
 bun add -g claude-plugin-wechat
+```
+
+If `bun` is missing, tell user to install: `curl -fsSL https://bun.sh/install | bash`
+
+#### Step 2 — Start the bridge [HUMAN]
+
+```bash
 wechat-acp
 ```
 
-**Option B — Run from plugin directory:**
-```bash
-cd "$PLUGIN_ROOT"
-bun acp-bridge.ts
-```
+If no credentials exist, the bridge automatically starts an interactive QR login flow (QR renders in terminal, user scans with WeChat, confirms on phone). After login, the bridge continues to start normally.
 
-**Option C — Zero-install:**
-```bash
-bunx claude-plugin-wechat
-```
+To force re-login: `wechat-acp --login`
 
-CLI options:
+Alternative ways to start:
 ```bash
 wechat-acp --cwd /path/to/project     # Set default working directory
 ACP_AGENT=gemini wechat-acp           # Use different agent
-ACP_AGENT=copilot wechat-acp          # GitHub Copilot
-ACP_AGENT=codex wechat-acp            # OpenAI Codex
+cd "$PLUGIN_ROOT" && bun acp-bridge.ts # Run from plugin directory
+bunx claude-plugin-wechat              # Zero-install
 ```
 
 Built-in agent presets: `claude` (default), `copilot`, `gemini`, `qwen`, `codex`, `opencode`.
 
-The bridge spawns the correct ACP command automatically (e.g. `npx @zed-industries/claude-code-acp` for claude). Tell user: each WeChat user gets a persistent ACP session with dedicated agent subprocess.
+The bridge spawns the correct ACP command automatically (e.g. `npx @zed-industries/claude-code-acp` for claude). Each WeChat user gets a persistent ACP session with dedicated agent subprocess.
 
 Users can switch working directory from WeChat by sending `/cwd /new/path`. This destroys the current session and creates a new one in the target directory.
 
-#### Step 7 — Pair [HUMAN]
+#### Step 3 — Pair [HUMAN]
 
-Same as Channel mode Step 7.
+1. "Send any message to the bot from WeChat."
+2. Bot replies with 6-char code.
+3. In a separate Claude Code session, run `/wechat:access pair <code>`.
 
-#### Step 8 — Verify
+#### Step 4 — Verify
 
 Test message from WeChat → Claude responds → reply sent back to WeChat automatically.
 
