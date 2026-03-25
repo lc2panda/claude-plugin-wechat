@@ -63,16 +63,19 @@ claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 <details>
 <summary><b>ACP mode / ACP 模式</b>（click to expand / 点击展开）</summary>
 
-> **macOS / Linux / Windows** — all commands typed in your **terminal** (Terminal.app / PowerShell / CMD).
+> `wechat-acp` is a bridge service: WeChat ↔ AI Agent (Claude Code / Gemini / Copilot...).
+> It runs in your terminal and **automatically launches** the AI agent in the background — you don't need to start Claude Code yourself.
 >
-> 适用于 **macOS / Linux / Windows**，以下命令均在你电脑的**终端**中输入。
+> `wechat-acp` 是一个桥接服务：微信 ↔ AI（Claude Code / Gemini / Copilot...）。
+> 在终端运行后，它会**自动启动** AI 引擎，你不需要手动打开 Claude Code。
+>
+> **macOS / Linux / Windows** — all commands typed in your **terminal** (Terminal.app / PowerShell / CMD).
 
-**Step 1 — Install / 安装**
+**Step 1 — Install Bun + plugin / 安装 Bun + 插件**
 
 <details>
-<summary>1a. Install Bun (skip if already have) / 安装 Bun（已有则跳过）</summary>
+<summary>1a. Install Bun (skip if already have) / 安装 Bun（已有可跳过，`bun --version` 检查）</summary>
 
-Check: `bun --version`. If not installed:
 ```bash
 # macOS / Linux
 curl -fsSL https://bun.sh/install | bash
@@ -82,13 +85,12 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 ```
 </details>
 
-1b. Install the plugin globally / 全局安装插件：
 ```bash
 bun add -g claude-plugin-wechat
 ```
-Done. `wechat-acp` is now available from any folder.
+`wechat-acp` command is now available globally.
 
-完成，`wechat-acp` 命令现在在任意目录都能用。
+`wechat-acp` 命令现在全局可用。
 
 **Step 2 — Start / 启动**
 
@@ -96,56 +98,82 @@ Done. `wechat-acp` is now available from any folder.
 wechat-acp
 ```
 
-- **First run?** QR code appears automatically → scan with WeChat → confirm on phone → done, bridge starts.
-- **Already logged in?** Bridge starts immediately.
+- **First run:** QR code appears → scan with WeChat → confirm on phone → bridge starts + AI agent launches automatically.
+- **Already logged in:** Bridge + AI agent start immediately.
 
-- **首次运行？** 自动弹出二维码 → 微信扫码 → 手机确认 → 完成，服务启动。
-- **已登录过？** 直接启动。
+- **首次运行：** 自动弹出二维码 → 微信扫码 → 手机确认 → 桥接服务启动，AI 引擎自动拉起。
+- **已登录过：** 直接启动。
 
-> Re-login anytime: `wechat-acp --login`
->
-> 重新登录：`wechat-acp --login`
+Keep this terminal window open — the service is running.
 
-Keep this terminal window open. The bridge is running.
+保持终端开着，服务运行中。
 
-保持终端窗口开着，服务运行中。
+> Re-login: `wechat-acp --login` / 重新登录：`wechat-acp --login`
 
 **Step 3 — Pair / 配对**
 
-1. WeChat send any message to the bot / 微信给机器人发消息
+1. Open WeChat, send any message to the bot / 打开微信，给机器人发消息
 2. Bot replies with a 6-char code / 收到 6 位配对码
-3. In a **new terminal**, run Claude Code and type: / 打开**新终端**启动 Claude Code，输入：`/wechat:access pair <code>`
+3. In a **new terminal window**, start Claude Code and type: / 打开**另一个终端窗口**，启动 Claude Code 输入：`/wechat:access pair <code>`
 
-Done! Chat with AI from WeChat. / 完成！从微信和 AI 对话。
+**Done!** Now send messages in WeChat → AI responds. You're using Claude Code via WeChat.
+
+**完成！** 微信发消息 → AI 回复。你正在通过微信使用 Claude Code。
 
 <details>
-<summary><b>Advanced / 进阶</b></summary>
+<summary><b>How it works / 工作原理</b></summary>
 
-**Switch project directory from WeChat / 微信端切换项目：**
+```
+You (WeChat) → wechat-acp bridge → Claude Code (auto-spawned) → response → WeChat
+   手机微信        终端桥接服务        自动启动的 AI 引擎        回复        微信收到
+```
+
+- `wechat-acp` polls WeChat for messages and forwards them to the AI agent
+- The AI agent (Claude Code by default) is a background subprocess — you never see it
+- Each WeChat user gets their own persistent AI session
+- `wechat-acp` 轮询微信消息，转发给 AI 引擎
+- AI 引擎（默认 Claude Code）是后台子进程，你看不到它
+- 每个微信用户都有独立的 AI 会话
+
+</details>
+
+<details>
+<summary><b>Switch project / 切换项目目录</b></summary>
+
+Send in WeChat / 在微信中发送：
 ```
 /cwd /path/to/your/project
 ```
-Agent restarts in the new directory. No terminal needed.
+AI restarts in the new directory. No need to touch the terminal.
 
-Agent 在新目录重启，不用动终端。
+AI 在新目录重启，不用动终端。
 
-**Startup options / 启动选项：**
+View current directory / 查看当前目录：
+```
+/cwd
+```
+
+</details>
+
+<details>
+<summary><b>Use other AI agents / 使用其他 AI 引擎</b></summary>
+
 ```bash
-wechat-acp --cwd /path/to/project      # Default working directory / 默认工作目录
-ACP_AGENT=gemini wechat-acp            # Gemini
+ACP_AGENT=gemini wechat-acp            # Google Gemini
 ACP_AGENT=copilot wechat-acp           # GitHub Copilot
 ACP_AGENT=codex wechat-acp             # OpenAI Codex
 ACP_AGENT=qwen wechat-acp              # Qwen / 通义千问
+wechat-acp --cwd /path/to/project      # Set default working directory / 指定默认工作目录
 ```
 
-**Third-party API / 第三方 API** (GLM, Kimi, 文心...):
+Third-party API / 第三方 API (GLM, Kimi, 文心...):
 ```bash
 ANTHROPIC_BASE_URL=https://your-provider/v1 ANTHROPIC_API_KEY=your-key wechat-acp
 ```
 
 </details>
 
-**Stop / 停止：** `Ctrl+C`
+**Stop / 停止：** `Ctrl+C` in the terminal running `wechat-acp` / 在运行 `wechat-acp` 的终端按 `Ctrl+C`
 
 </details>
 
