@@ -39,6 +39,7 @@ const CREDENTIALS_FILE = join(STATE_DIR, 'credentials.json')
 const SYNC_BUF_FILE = join(STATE_DIR, 'sync_buf.txt')
 const CONTEXT_TOKENS_FILE = join(STATE_DIR, 'context-tokens.json')
 const INBOX_DIR = join(STATE_DIR, 'inbox')
+const USER_CWD_FILE = join(STATE_DIR, 'user-cwd.json')
 const CDN_BASE = 'https://novac2c.cdn.weixin.qq.com'
 const DEBUG_MODE_FILE = join(STATE_DIR, 'debug-mode.json')
 
@@ -61,7 +62,22 @@ const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? preset?.command ?? agentN
 const AGENT_ARGS = process.env.ACP_AGENT_ARGS
   ? process.env.ACP_AGENT_ARGS.split(' ').filter(Boolean)
   : preset?.args ?? []
-const AGENT_CWD = process.env.ACP_AGENT_CWD ?? process.cwd()
+
+// Parse CLI arguments
+const cliArgs = process.argv.slice(2)
+let defaultCwd = process.env.ACP_AGENT_CWD ?? process.cwd()
+for (let i = 0; i < cliArgs.length; i++) {
+  if (cliArgs[i] === '--cwd' && cliArgs[i + 1]) {
+    defaultCwd = cliArgs[i + 1]
+    i++
+  } else if (cliArgs[i]?.startsWith('--cwd=')) {
+    defaultCwd = cliArgs[i].split('=')[1]
+  } else if (cliArgs[i] === '--login') {
+    // Will handle later
+  }
+}
+
+const AGENT_CWD = defaultCwd
 const AGENT_ENV: Record<string, string> = (() => {
   const raw = process.env.ACP_AGENT_ENV ?? ''
   if (!raw) return {}
@@ -172,6 +188,34 @@ function debouncedPersist(): void {
     persistTimer = null
     persistContextTokens()
   }, 5000)
+}
+
+// Per-user working directory overrides
+const userCwdMap = new Map<string, string>(
+  (() => {
+    try {
+      const data = JSON.parse(readFileSync(USER_CWD_FILE, 'utf8'))
+      return Object.entries(data) as [string, string][]
+    } catch {
+      return []
+    }
+  })()
+)
+
+function persistUserCwd(): void {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+    const obj = Object.fromEntries(userCwdMap)
+    const tmp = USER_CWD_FILE + '.tmp'
+    writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { mode: 0o600 })
+    renameSync(tmp, USER_CWD_FILE)
+  } catch (err) {
+    process.stderr.write(`wechat acp-bridge: user-cwd persist failed: ${err}\n`)
+  }
+}
+
+function getUserCwd(userId: string): string {
+  return userCwdMap.get(userId) ?? AGENT_CWD
 }
 
 // Map attachment_id → download info for deferred media downloads
@@ -897,7 +941,7 @@ async function createSession(userId: string, contextToken: string): Promise<User
   const useShell = process.platform === 'win32'
   const proc = spawn(AGENT_COMMAND, AGENT_ARGS, {
     stdio: ['pipe', 'pipe', 'inherit'],
-    cwd: AGENT_CWD,
+    cwd: getUserCwd(userId),
     env: { ...process.env, ...AGENT_ENV },
     shell: useShell,
   })
@@ -937,7 +981,7 @@ async function createSession(userId: string, contextToken: string): Promise<User
 
   // Create session
   const sessionResult = await connection.newSession({
-    cwd: AGENT_CWD,
+    cwd: getUserCwd(userId),
     mcpServers: [],
   })
   process.stderr.write(`wechat acp-bridge [${userId}]: session created (sessionId=${sessionResult.sessionId})\n`)
@@ -1113,6 +1157,37 @@ async function handleInbound(msg: any): Promise<void> {
     if (msg.context_token) await sendMessage(senderId, `${cmdText.slice(6)}\n\n⏱ 延迟: ${Date.now() - (msg.create_time_ms ?? Date.now())}ms`, msg.context_token).catch(() => {})
     return
   }
+  if (cmdText.startsWith('/cwd')) {
+    const newCwd = cmdText.slice(4).trim()
+    if (!newCwd) {
+      // 显示当前 cwd
+      const currentCwd = getUserCwd(senderId)
+      if (msg.context_token) await sendMessage(senderId, `当前工作目录: ${currentCwd}`, msg.context_token).catch(() => {})
+      return
+    }
+    // 验证路径存在
+    try {
+      const stat = statSync(newCwd)
+      if (!stat.isDirectory()) {
+        if (msg.context_token) await sendMessage(senderId, `❌ 路径不是目录: ${newCwd}`, msg.context_token).catch(() => {})
+        return
+      }
+    } catch {
+      if (msg.context_token) await sendMessage(senderId, `❌ 目录不存在: ${newCwd}`, msg.context_token).catch(() => {})
+      return
+    }
+    // 保存 per-user cwd
+    userCwdMap.set(senderId, newCwd)
+    persistUserCwd()
+    // 销毁当前 session，下次消息时会用新 cwd 重建
+    const existingSession = userSessions.get(senderId)
+    if (existingSession) {
+      if (!existingSession.process.killed) existingSession.process.kill('SIGTERM')
+      userSessions.delete(senderId)
+    }
+    if (msg.context_token) await sendMessage(senderId, `✅ 工作目录已切换: ${newCwd}\nAgent 会话已重置，下条消息将在新目录启动`, msg.context_token).catch(() => {})
+    return
+  }
 
   // Extract text and download any media attachments inline
   const text = extractText(msg)
@@ -1207,7 +1282,7 @@ async function pollLoop(): Promise<void> {
 
 // --- Start ---
 
-process.stderr.write(`wechat acp-bridge: started (ACP mode, agent=${AGENT_COMMAND} ${AGENT_ARGS.join(' ')})\n`)
+process.stderr.write(`wechat acp-bridge: started (ACP mode, agent=${AGENT_COMMAND} ${AGENT_ARGS.join(' ')}, default cwd=${AGENT_CWD})\n`)
 process.stderr.write(`wechat acp-bridge: long-poll started (${BASE_URL})\n`)
 
 pollLoop()

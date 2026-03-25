@@ -1,12 +1,20 @@
 {
-  "name": "claude-channel-wechat",
-  "version": "0.1.0",
+  "name": "claude-plugin-wechat",
+  "version": "1.2.0",
+  "description": "WeChat (微信) plugin for Claude Code — text, images, files, voice, video, remote permission relay",
   "license": "MIT",
   "type": "module",
-  "bin": "./server.ts",
+  "bin": {
+    "wechat-acp": "./acp-bridge.ts"
+  },
   "scripts": {
     "start": "bun install --no-summary && bun server.ts",
     "start:acp": "bun install --no-summary && bun acp-bridge.ts"
+  },
+  "keywords": ["wechat", "weixin", "claude", "claude-code", "mcp", "acp", "chatbot", "ai"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lc2panda/claude-plugin-wechat.git"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.16.1",
