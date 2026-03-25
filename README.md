@@ -37,7 +37,18 @@ claude plugin install wechat@lc2panda-plugins
 
 - [Claude Code](https://claude.ai/claude-code) v2.1.80+
 - [Bun](https://bun.sh) runtime
-- Channel mode requires **claude.ai login**; ACP mode requires **API Key**
+- Channel mode requires **claude.ai login**; ACP mode works with **any Anthropic-compatible API**
+
+### Third-party API / 第三方 API（GLM、Kimi、文心等）
+
+ACP mode supports any provider that implements the Anthropic Claude SDK protocol. If you've configured a third-party API in `~/.claude/settings.json`, ACP mode will use it automatically.
+
+ACP 模式支持任何兼容 Anthropic Claude SDK 协议的第三方 API。如果你已在 `~/.claude/settings.json` 中配置了 GLM、Kimi、文心等第三方 API 和 Key，ACP 模式会自动使用。
+
+You can also set it via environment variables / 也可以通过环境变量设置：
+```bash
+ANTHROPIC_BASE_URL=https://your-provider/v1 ANTHROPIC_API_KEY=your-key bun acp-bridge.ts
+```
 
 ### Related / 相关项目
 
