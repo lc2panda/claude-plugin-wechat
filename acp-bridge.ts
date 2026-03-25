@@ -44,8 +44,23 @@ const DEBUG_MODE_FILE = join(STATE_DIR, 'debug-mode.json')
 
 // --- ACP Agent configuration ---
 
-const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? 'claude'
-const AGENT_ARGS = (process.env.ACP_AGENT_ARGS ?? '').split(' ').filter(Boolean)
+// Built-in agent presets (matching wechat-acp convention)
+// Claude Code CLI does NOT natively speak ACP — it needs the @zed-industries/claude-code-acp wrapper.
+const AGENT_PRESETS: Record<string, { command: string; args: string[] }> = {
+  claude:   { command: 'npx', args: ['@zed-industries/claude-code-acp'] },
+  copilot:  { command: 'npx', args: ['@github/copilot', '--acp', '--yolo'] },
+  gemini:   { command: 'npx', args: ['@google/gemini-cli', '--experimental-acp'] },
+  qwen:     { command: 'npx', args: ['@qwen-code/qwen-code', '--acp', '--experimental-skills'] },
+  codex:    { command: 'npx', args: ['@zed-industries/codex-acp'] },
+  opencode: { command: 'npx', args: ['opencode-ai', 'acp'] },
+}
+
+const agentName = process.env.ACP_AGENT ?? 'claude'
+const preset = AGENT_PRESETS[agentName]
+const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? preset?.command ?? agentName
+const AGENT_ARGS = process.env.ACP_AGENT_ARGS
+  ? process.env.ACP_AGENT_ARGS.split(' ').filter(Boolean)
+  : preset?.args ?? []
 const AGENT_CWD = process.env.ACP_AGENT_CWD ?? process.cwd()
 const AGENT_ENV: Record<string, string> = (() => {
   const raw = process.env.ACP_AGENT_ENV ?? ''

@@ -24,7 +24,7 @@ claude plugin install wechat@lc2panda-plugins
 | Mode / 模式 | Auth / 认证 | Command / 命令 |
 |---|---|---|
 | **Channel** (full features / 全功能) | claude.ai login | `claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins` |
-| **ACP** (API Key users) | ANTHROPIC_API_KEY | `ANTHROPIC_API_KEY=sk-xxx bun acp-bridge.ts` |
+| **ACP** (API Key / any agent) | Any provider | `bun acp-bridge.ts` (default: Claude, also: copilot/gemini/qwen/codex) |
 
 > Channel mode adds `--dangerously-skip-permissions` for auto-approve. ACP mode works with any provider (Bedrock, Vertex, etc.).
 >
@@ -150,10 +150,15 @@ Complete Steps 1-5 (dependencies, build, QR login).
 
 ```bash
 cd "$PLUGIN_ROOT"
-ANTHROPIC_API_KEY=sk-your-key bun acp-bridge.ts
+bun acp-bridge.ts
 ```
 
-Tell user: each WeChat user gets a persistent ACP session with dedicated agent subprocess. Supports any ACP agent via `ACP_AGENT_COMMAND` env var (default: `claude`).
+Built-in agent presets: `claude` (default), `copilot`, `gemini`, `qwen`, `codex`, `opencode`. Switch via:
+```bash
+ACP_AGENT=gemini bun acp-bridge.ts
+```
+
+The bridge spawns the correct ACP command automatically (e.g. `npx @zed-industries/claude-code-acp` for claude). Tell user: each WeChat user gets a persistent ACP session with dedicated agent subprocess.
 
 #### Step 7 — Pair [HUMAN]
 
