@@ -2,265 +2,250 @@
 
 ## If you are a human / 如果你是人类
 
-WeChat (微信) channel plugin for [Claude Code](https://claude.ai/claude-code).
-Chat with Claude Code from WeChat — text, images, files, voice, video, with remote permission relay.
+WeChat (微信) plugin for [Claude Code](https://claude.ai/claude-code) — text, images, files, voice, video, remote permission relay.
 
-微信频道插件，让你可以通过微信直接与 Claude Code 对话，支持文字、图片、文件、语音、视频，以及远程权限审批。
+微信插件，让你通过微信直接与 Claude Code 对话。支持文字、图片、文件、语音、视频、远程权限审批。
 
-**Install / 安装：**
+<img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
 
+### Quick start / 快速开始
+
+**1. Install / 安装**
 ```bash
 claude plugin marketplace add lc2panda/claude-plugin-wechat
 claude plugin install wechat@lc2panda-plugins
 ```
 
-**Start / 启动：**
+**2. Login / 登录：** Run `/wechat:configure login` in Claude Code, scan QR with WeChat.
+在 Claude Code 中执行 `/wechat:configure login`，微信扫码。
 
-```bash
-claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
-```
+**3. Start / 启动（choose one / 选一种）：**
 
-**Setup / 配置：** Run `/wechat:configure login` in Claude Code to scan QR and connect.
-在 Claude Code 中执行 `/wechat:configure login` 扫码连接微信。
+| Mode / 模式 | Auth / 认证 | Command / 命令 |
+|---|---|---|
+| **Channel** (full features / 全功能) | claude.ai login | `claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins` |
+| **Agent SDK** (API Key users) | ANTHROPIC_API_KEY | `ANTHROPIC_API_KEY=sk-xxx bun agent-bridge.ts` |
 
-**Pair / 配对：** Send any message to the bot on WeChat → get a code → run `/wechat:access pair <code>`.
-从微信给机器人发任意消息 → 收到配对码 → 在终端执行 `/wechat:access pair <配对码>`。
+> Channel mode adds `--dangerously-skip-permissions` for auto-approve. Agent SDK mode works with any provider (Bedrock, Vertex, etc.).
+>
+> Channel 模式加 `--dangerously-skip-permissions` 可自动授权。Agent SDK 模式支持任何认证方式。
 
-Prerequisites / 前置条件: [Claude Code](https://claude.ai/claude-code) v2.1.80+, [Bun](https://bun.sh) runtime. License: MIT.
+**4. Pair / 配对：** Send any message to the bot → get a code → `/wechat:access pair <code>`
+微信给机器人发消息 → 收到配对码 → 终端执行 `/wechat:access pair <配对码>`
 
-Two modes / 双模式支持:
-- **Channel mode** (claude.ai login): full features including remote permission relay / 完整功能含远程权限审批
-- **Agent SDK mode** (API Key): for users with `ANTHROPIC_API_KEY` or other providers / 适用 API Key 或第三方模型用户
+### Prerequisites / 前置条件
 
-**WeCom / 企业微信：** Looking for WeCom (企业微信) integration? Check out [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom).
-如需接入企业微信，请查看 [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)，感谢开发者 dividduang 的贡献。
+- [Claude Code](https://claude.ai/claude-code) v2.1.80+
+- [Bun](https://bun.sh) runtime
+- Channel mode requires **claude.ai login**; Agent SDK mode requires **API Key**
 
-**Screenshot / 效果截图：**
+### Related / 相关项目
 
-<img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
+- **WeCom / 企业微信：** [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom) — 感谢开发者 dividduang
 
 ---
 
 ## If you are Claude Code (AI agent), read below
 
-Everything below is machine-readable instructions. Follow sequentially.
-Steps marked **[HUMAN]** require prompting the user to act physically.
+Machine-readable instructions. Follow sequentially.
+Steps marked **[HUMAN]** need the user to act physically.
 
-### Step 0 — Pre-flight
+### Step 0 — Pre-flight & mode detection
 
 ```bash
 claude --version   # >= 2.1.80 required
 bun --version      # required
 ```
 
-If `bun` is missing, tell user: "Please install Bun first: `curl -fsSL https://bun.sh/install | bash` then restart your terminal."
+If `bun` is missing, tell user to install: `curl -fsSL https://bun.sh/install | bash`
 
-**IMPORTANT — Detect auth mode and choose the right path:**
-- Run `claude auth status --text` to check the user's authentication method.
-- If authenticated via **claude.ai** → use **Channel mode** (Steps 4-8 below, full features).
-- If authenticated via **API key / Console / Bedrock / Vertex** → use **Agent SDK mode** (skip to "Agent SDK mode" section below). Channel mode will show "Channels are not currently available" for these users.
-- Ask the user which mode they want if unclear.
+**Detect auth mode to choose the right path:**
+```bash
+claude auth status --text
+```
+- **claude.ai login** → Channel mode (Steps 1-8, full features including permission relay)
+- **API key / Console / Bedrock / Vertex** → Agent SDK mode (Steps 1-5 then "Agent SDK setup" below)
+- Ask the user which mode if unclear.
 
-### Step 1 — Locate plugin root
+---
+
+### Channel mode (claude.ai users)
+
+#### Step 1 — Locate plugin root
 
 Set `$PLUGIN_ROOT` to the absolute path of the directory containing this README.
 
-### Step 2 — Install dependencies
+#### Step 2 — Install dependencies
 
 ```bash
 cd "$PLUGIN_ROOT" && bun install --no-summary
 ```
 
-Verify: `node_modules/@modelcontextprotocol`, `node_modules/zod`, and `node_modules/silk-wasm` must exist.
+Verify: `node_modules/@modelcontextprotocol`, `node_modules/zod`, `node_modules/silk-wasm` must exist.
 
-### Step 3 — Build validation
+#### Step 3 — Build validation
 
 ```bash
 cd "$PLUGIN_ROOT" && bun build --target=bun server.ts --outdir /tmp/wechat-build-check 2>&1
 rm -rf /tmp/wechat-build-check
 ```
 
-Expect `Bundled ... modules` with zero errors.
-
-### Step 4 — Register and install
+#### Step 4 — Register and install
 
 ```bash
 claude plugin marketplace add lc2panda/claude-plugin-wechat
 claude plugin install wechat@lc2panda-plugins
 ```
 
-Fallback (local dev, must pass on every startup):
-```bash
-claude --plugin-dir "$PLUGIN_ROOT"
-```
+#### Step 5 — WeChat QR login [HUMAN]
 
-### Step 5 — WeChat QR login [HUMAN]
+Check if credentials exist: `cat ~/.claude/channels/wechat/credentials.json 2>/dev/null`
 
-First check if credentials already exist:
-```bash
-cat ~/.claude/channels/wechat/credentials.json 2>/dev/null
-```
+If yes, skip to Step 6. Otherwise:
 
-If credentials exist and contain `token` + `baseUrl`, skip to Step 6.
+1. `bun "$PLUGIN_ROOT/login-qr.ts"` — QR renders in terminal
+2. Tell user: "Scan with WeChat, confirm on phone."
+3. Parse last line JSON, extract `qrcode` field
+4. `bun "$PLUGIN_ROOT/login-poll.ts" "<qrcode>"`
+   - `scaned` → "Confirm on phone..."
+   - `refreshed:<token>` → auto-refreshed (up to 3x)
+   - `expired`/`timeout` → re-run from 5.1
+   - JSON with `token` → success, tell user to restart
 
-Otherwise run the two-step QR login:
+#### Step 6 — Restart with channel [HUMAN]
 
-1. Run `bun "$PLUGIN_ROOT/login-qr.ts"` — a QR code renders in terminal.
-2. Tell user: "Please scan the QR code with WeChat and confirm on your phone."
-3. Parse the last line of output as JSON, extract the `qrcode` field.
-4. Run `bun "$PLUGIN_ROOT/login-poll.ts" "<qrcode>"` and handle output:
-   - `scaned` → tell user "Scanned, please confirm on your phone..."
-   - `refreshed:<new_token>` → QR auto-refreshed, no action needed (up to 3 times)
-   - `expired` or `timeout` (exit 1) → re-run from 5.1
-   - JSON with `token` field (exit 0) → credentials saved. Tell user: "WeChat connected! Please restart Claude Code to enable the channel."
+Ask user which permission mode:
 
-### Step 6 — Restart with channel enabled [HUMAN]
-
-Ask the user which permission mode they prefer, then give the corresponding command:
-
-**Option A — Auto-approve all permissions (faster, less interruption):**
+**Option A — Auto-approve (faster):**
 ```
 claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-**Option B — Manual approval for each action (safer, you confirm every tool use):**
+**Option B — Manual confirm (safer, approvals via WeChat):**
 ```
 claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-Explain the difference: Option A lets Claude execute commands without asking. Option B prompts for confirmation on sensitive actions (file writes, shell commands, etc.) — approvals can also come from WeChat via permission relay.
+#### Step 7 — Pair [HUMAN]
 
-### Step 7 — Pair WeChat account [HUMAN]
+1. "Send any message to the bot from WeChat."
+2. Bot replies with 6-char code.
+3. Run `/wechat:access pair <code>`.
 
-1. Tell user: "Send any message to the bot from WeChat."
-2. The bot replies with a 6-character pairing code.
-3. Ask user for the code, then run `/wechat:access pair <code>`.
-4. Confirm the user is now allowlisted.
+#### Step 8 — Verify
 
-### Step 8 — Verify
-
-Send a test message from WeChat. It should arrive as a `<channel source="wechat" ...>` notification. Use the `reply` tool to respond.
+Test message from WeChat → arrives as `<channel source="wechat" ...>` → reply with `reply` tool.
 
 ---
 
-## Reference (for AI)
+### Agent SDK mode (API Key users)
 
-### MCP tools
+For users with API key / Console / Bedrock / Vertex auth. Uses `claude -p` subprocess instead of MCP Channels.
 
-| Tool | Purpose | Required params |
-|------|---------|-----------------|
-| `reply` | Send text and/or files to WeChat. Supports image, video, and file attachments via MIME auto-detection. | `user_id`, `text`, `context_token`; optional `files` (string array of local paths) |
-| `download_attachment` | Download media (image/voice/file/video) from WeChat CDN. AES-128-ECB decrypted automatically. Voice files (.silk) are transcoded to WAV. | `attachment_id` |
+#### Steps 1-5 — Same as above
 
-### Channel protocol
+Complete Steps 1-5 (dependencies, build, QR login).
 
-- Capabilities: `experimental['claude/channel']` + `experimental['claude/channel/permission']`
-- Inbound events: `notifications/claude/channel` with meta `{user_id, context_token, ts}`
-- Outbound: via `reply` MCP tool. `context_token` is **mandatory** — without it the reply fails.
-- Permission relay: remote user can reply `yes <code>` or `no <code>` from WeChat to approve/deny tool use.
-- Media types: image (13 extensions), video (11 extensions), file (everything else). Auto-detected by file extension.
-- Voice: if `voice_item.text` exists (WeChat ASR), transcription is used directly. Otherwise audio is downloadable via `download_attachment` and transcoded from SILK to WAV.
-- Quoted messages: `ref_msg` content (text + media) is extracted and included in channel notification.
-
-### WeChat slash commands (handled by the channel, not Claude Code)
-
-| Command | Effect |
-|---------|--------|
-| `/toggle-debug` | Toggle debug mode on/off (persists to disk). When on, reply tool appends timing diagnostics. |
-| `/echo <text>` | Echo text back with channel latency measurement. Does not reach Claude. |
-
-### Skills
-
-| Skill | Trigger |
-|-------|---------|
-| `/wechat:configure` | User asks to login, check status, or change base URL |
-| `/wechat:access` | User asks to pair, approve/remove users, change DM policy, or configure `humanDelay`/`textChunkLimit` |
-
-### Key constraints
-
-- WeChat has **no message history API**. Ask user to paste or summarize earlier context.
-- Session can expire (errcode -14). Channel auto-pauses for 1 hour. User may need to re-login via `/wechat:configure login`.
-- CDN uploads retry up to 3 times on server errors. 4xx errors fail immediately.
-
-### Access config options (in `access.json`)
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `dmPolicy` | `pairing` / `allowlist` / `disabled` | Who can message the bot |
-| `allowFrom` | `string[]` | Allowlisted user IDs |
-| `textChunkLimit` | `number` | Max chars per message (default 2000) |
-| `humanDelay` | `boolean` | Simulate typing delay (~50ms/char, max 3s) between chunks |
-
-### State files (all under `~/.claude/channels/wechat/`)
-
-| File | Content |
-|------|---------|
-| `credentials.json` | `{token, baseUrl, userId, accountId}` |
-| `access.json` | `{dmPolicy, allowFrom[], pending{}, textChunkLimit?, humanDelay?}` |
-| `sync_buf.txt` | getUpdates long-poll cursor |
-| `context-tokens.json` | per-user context_token (debounced 5s persist) |
-| `debug-mode.json` | `{enabled: boolean}` — debug mode state |
-| `inbox/` | downloaded media attachments |
-| `approved/` | pairing approval marker files |
-
-### Troubleshooting
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `Channels are not currently available` | Using API key / Console / third-party auth | Switch to Agent SDK mode (see below), or run `claude logout` then `claude login` for claude.ai OAuth |
-| `credentials required` on start | No QR login | Run Step 5 |
-| No channel events arriving | Missing `--dangerously-load-development-channels` flag | Run Step 6 |
-| `user X is not allowlisted` | User not paired | Run Step 7 |
-| `context_token is required` | Missing from tool call | Always pass `context_token` from inbound `<channel>` tag meta |
-| `CDN download failed` | Network or expired URL | Retry `download_attachment` |
-| `getuploadurl` returns `ret:-2` | Invalid params or expired token | Re-login via `/wechat:configure login` |
-| `session expired` error | errcode -14 from API | Channel auto-pauses 1 hour. Re-login if persists. |
-| Voice file is `.silk` format | No silk-wasm or transcode failed | Run `bun install` to ensure silk-wasm is installed |
-
----
-
-## Agent SDK mode (for API Key users)
-
-For users authenticated via API key, Console, Bedrock, Vertex, or any non-claude.ai method. This mode uses `claude -p` CLI subprocess instead of MCP Channels.
-
-### Setup
-
-1. Complete Steps 0-5 above (pre-flight, dependencies, build, WeChat QR login).
-2. Ensure `claude` CLI is in PATH and `ANTHROPIC_API_KEY` is set (or provider credentials configured).
-3. Start the bridge:
+#### Step 6 — Start the bridge [HUMAN]
 
 ```bash
 cd "$PLUGIN_ROOT"
 ANTHROPIC_API_KEY=sk-your-key bun agent-bridge.ts
 ```
 
-Or with the npm script:
-```bash
-ANTHROPIC_API_KEY=sk-your-key bun run start:sdk
-```
+Tell user: each WeChat user gets a persistent session (auto-resumed). No restart needed between messages.
 
-### How it works
+#### Step 7 — Pair [HUMAN]
 
-- Each WeChat user gets a persistent Claude Code session (auto-resumed via `--resume`).
-- Messages go through the same iLink API, same access control, same media pipeline.
-- Claude Code runs as a subprocess per message turn, responses are sent back to WeChat.
+Same as Channel mode Step 7.
 
-### Differences from Channel mode
+#### Step 8 — Verify
 
-| Feature | Channel mode | Agent SDK mode |
-|---------|-------------|---------------|
+Test message from WeChat → Claude responds → reply sent back to WeChat automatically.
+
+---
+
+## Reference (for AI)
+
+### MCP tools (Channel mode only)
+
+| Tool | Purpose | Params |
+|------|---------|--------|
+| `reply` | Send text/files to WeChat | `user_id`, `text`, `context_token`; optional `files[]` |
+| `download_attachment` | Download media from CDN | `attachment_id` |
+
+### Channel protocol
+
+- Capabilities: `claude/channel` + `claude/channel/permission`
+- Inbound: `notifications/claude/channel` → meta `{user_id, context_token, ts}`
+- Outbound: `reply` tool. `context_token` **mandatory**.
+- Permission relay: user replies `yes <code>` / `no <code>` from WeChat
+- Media: AES-128-ECB CDN, 13 image + 11 video extensions auto-routed
+- Voice: `voice_item.text` (ASR) preferred; otherwise SILK→WAV transcode
+- Quoted messages: `ref_msg` extracted
+
+### Agent SDK protocol
+
+- Bridge spawns `claude -p --bare --resume <session>` per turn
+- Session IDs persisted in `sdk-sessions.json` per WeChat user
+- Responses chunked and sent via `sendMessage`
+- Same media pipeline as Channel mode (inline download, no MCP tool)
+
+### WeChat commands (both modes)
+
+| Command | Effect |
+|---------|--------|
+| `/toggle-debug` | Toggle debug mode |
+| `/echo <text>` | Echo with latency measurement |
+
+### Skills (Channel mode only)
+
+| Skill | Trigger |
+|-------|---------|
+| `/wechat:configure` | Login, status, base URL |
+| `/wechat:access` | Pair, allow/remove, policy, `humanDelay`, `textChunkLimit` |
+
+### Mode comparison
+
+| Feature | Channel | Agent SDK |
+|---------|---------|-----------|
 | Auth | claude.ai OAuth | API Key / any provider |
-| Remote permission relay | ✅ | ❌ |
-| Persistent connection | ✅ | Per-turn subprocess |
-| Multi-turn memory | ✅ | ✅ (via --resume) |
-| Media support | ✅ | ✅ |
-| Debug commands | ✅ | ✅ |
+| Permission relay | ✅ | ❌ |
+| Connection | Persistent MCP | Per-turn subprocess |
+| Multi-turn | ✅ | ✅ (--resume) |
+| Media | ✅ | ✅ |
+| Debug | ✅ | ✅ |
+| Typing indicator | ✅ | ✅ |
+
+### State files (`~/.claude/channels/wechat/`)
+
+| File | Content |
+|------|---------|
+| `credentials.json` | Bot auth |
+| `access.json` | Access control |
+| `sync_buf.txt` | Poll cursor |
+| `context-tokens.json` | Per-user context_token |
+| `sdk-sessions.json` | Per-user Claude session ID (Agent SDK mode) |
+| `debug-mode.json` | Debug toggle |
+| `inbox/` | Downloaded media |
+| `approved/` | Pairing markers |
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `Channels are not currently available` | Use Agent SDK mode, or `claude logout` → `claude login` for claude.ai |
+| `credentials required` | Run Step 5 (QR login) |
+| No channel events | Add `--dangerously-load-development-channels` flag |
+| `user not allowlisted` | `/wechat:access pair <code>` |
+| `context_token required` | Pass from `<channel>` tag meta |
+| `session expired` (errcode -14) | Auto-pauses 1h. Re-login if persists |
 
 ---
 
 ## Acknowledgement / 致谢
 
-This project is based on [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin). Thanks for the original work.
+Based on [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin). Thanks for the original work.
 
 本项目基于 [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin) 开发，感谢原作者的贡献。
 
