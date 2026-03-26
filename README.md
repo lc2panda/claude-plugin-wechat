@@ -8,15 +8,17 @@ WeChat plugin for [Claude Code](https://claude.ai/claude-code).
 
 ---
 
-## 两种模式
+## 选择模式
 
-| | **Channel 模式** | **ACP 模式** |
-|---|---|---|
-| 适用 | claude.ai 订阅用户 | API Key / 任意 AI 服务商 |
-| 特点 | 全功能，微信远程审批权限 | 支持 Claude、Copilot、Gemini、Codex、通义千问 |
-| 安装 | Claude Code 插件市场 | 终端全局安装 |
-
-> **怎么选？** 用 claude.ai 账号登录的 → **Channel**。用 API Key 的 → **ACP**。
+```
+你的 Claude Code 怎么登录的？
+        │
+        ├── claude.ai 账号 ──→ ✅ Channel 模式（全功能，微信远程审批）
+        │                         ↓ 往下看「Channel 模式」
+        │
+        └── API Key ──→ ✅ ACP 模式（支持 Claude / Copilot / Gemini / Codex / 通义千问）
+                          ↓ 往下看「ACP 模式」
+```
 
 ---
 
