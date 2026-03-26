@@ -23,7 +23,9 @@ WeChat plugin for [Claude Code](https://claude.ai/claude-code).
 <details open>
 <summary><h3>Channel 模式</h3></summary>
 
-> 前置条件：[Claude Code](https://claude.ai/claude-code) v2.1.80+，使用 claude.ai 账号登录。
+> 前置条件：[Claude Code](https://claude.ai/claude-code) **v2.1.81+**，使用 claude.ai 账号登录。
+>
+> 检查版本：终端输入 `claude --version`，低于 2.1.81 请先更新：`claude update`
 
 #### 第 1 步 · 安装插件
 
@@ -171,11 +173,12 @@ Follow sequentially. Steps marked **[HUMAN]** need physical user action.
 ### Step 0 — Pre-flight & mode detection
 
 ```bash
-claude --version   # >= 2.1.80 required
+claude --version   # >= 2.1.81 required (Channels introduced in 2.1.81)
 bun --version      # required
 ```
 
-If `bun` is missing, tell user: `curl -fsSL https://bun.sh/install | bash`
+If Claude Code version is below 2.1.81, tell user to update: `claude update`
+If `bun` is missing, tell user to install: `curl -fsSL https://bun.sh/install | bash`
 
 **Detect auth mode:**
 ```bash
