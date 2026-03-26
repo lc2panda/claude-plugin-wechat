@@ -48,11 +48,11 @@ claude --dangerously-skip-permissions --dangerously-load-development-channels pl
 claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-#### 第 4 步 · 配对
+#### 第 4 步 · 使用
 
-1. 打开微信，给机器人发任意消息
-2. 机器人回复一个 6 位配对码
-3. 回到 Claude Code 终端，输入：`/wechat:access pair <配对码>`
+扫码登录的微信号已自动获得访问权限，直接发消息即可与 AI 对话。
+
+> **其他人想用？** 需要配对：对方给机器人发消息 → 收到 6 位配对码 → 你在 Claude Code 终端输入 `/wechat:access pair <配对码>` 授权。
 
 > 停止：在 Claude Code 中按 `Ctrl+C` 或输入 `/exit`
 
@@ -102,11 +102,11 @@ wechat-acp
 
 > 重新登录：`wechat-acp --login`
 
-#### 第 3 步 · 配对
+#### 第 3 步 · 使用
 
-1. 打开微信，给机器人发任意消息
-2. 收到 6 位配对码
-3. 打开**另一个终端窗口**，启动 Claude Code，输入：`/wechat:access pair <配对码>`
+扫码登录的微信号已自动获得访问权限，直接发消息即可与 AI 对话。
+
+> **其他人想用？** 需要配对：对方给机器人发消息 → 收到 6 位配对码 → 你在另一个终端启动 Claude Code，输入 `/wechat:access pair <配对码>` 授权。
 
 **完成！** 微信发消息 → AI 回复。
 
@@ -244,15 +244,14 @@ claude --dangerously-skip-permissions --dangerously-load-development-channels pl
 claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-#### Step 7 — Pair [HUMAN]
+#### Step 7 — Verify [HUMAN]
 
-1. "Send any message to the bot from WeChat."
-2. Bot replies with 6-char code.
-3. Run `/wechat:access pair <code>`.
+The user who scanned the QR code during login is **automatically allowlisted** — no pairing needed. Tell them to send a message from WeChat; it arrives as `<channel source="wechat" ...>`. Reply with the `reply` tool.
 
-#### Step 8 — Verify
-
-Test message from WeChat → arrives as `<channel source="wechat" ...>` → reply with `reply` tool.
+**Other users** who want to chat must go through pairing:
+1. They send any message to the bot from WeChat.
+2. Bot replies with a 6-char code.
+3. The device owner runs `/wechat:access pair <code>` to approve.
 
 ---
 
@@ -292,15 +291,14 @@ The bridge spawns the correct ACP command automatically (e.g. `npx @zed-industri
 
 Users can switch working directory from WeChat by sending `/cwd /new/path`. This destroys the current session and creates a new one in the target directory.
 
-#### Step 3 — Pair [HUMAN]
+#### Step 3 — Verify [HUMAN]
 
-1. "Send any message to the bot from WeChat."
-2. Bot replies with 6-char code.
-3. In a separate Claude Code session, run `/wechat:access pair <code>`.
+The user who scanned the QR code during login is **automatically allowlisted** — no pairing needed. Tell them to send a message from WeChat and confirm the AI responds.
 
-#### Step 4 — Verify
-
-Test message from WeChat → Claude responds → reply sent back to WeChat automatically.
+**Other users** who want to chat must go through pairing:
+1. They send any message to the bot from WeChat.
+2. Bot replies with a 6-char code.
+3. The device owner runs `/wechat:access pair <code>` in a separate Claude Code session to approve.
 
 ---
 
