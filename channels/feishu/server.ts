@@ -109,8 +109,29 @@ const MAX_CHUNK_LIMIT = 2000
 // Runtime set of allowed sender IDs for outbound validation.
 const knownUsers = new Set<string>()
 
-// Map open_id → chat_id for reply routing
-const userChatMap = new Map<string, string>()
+// Map open_id → chat_id for reply routing (persisted for permission relay)
+const USER_CHAT_MAP_FILE = join(STATE_DIR, 'user-chat-map.json')
+
+const userChatMap = new Map<string, string>(
+  (() => {
+    try {
+      const data = JSON.parse(readFileSync(USER_CHAT_MAP_FILE, 'utf8'))
+      return Object.entries(data) as [string, string][]
+    } catch {
+      return []
+    }
+  })()
+)
+
+function persistUserChatMap(): void {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+    const obj = Object.fromEntries(userChatMap)
+    const tmp = USER_CHAT_MAP_FILE + '.tmp'
+    writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { mode: 0o600 })
+    renameSync(tmp, USER_CHAT_MAP_FILE)
+  } catch {}
+}
 
 // Map attachment_id → download info
 const pendingAttachments = new Map<string, { messageId: string; fileKey: string; type: 'image' | 'file' | 'audio'; filename: string }>()
@@ -411,10 +432,31 @@ function chunk(text: string, limit: number): string[] {
   return out
 }
 
-// --- Markdown detection and post conversion ---
+// --- Smart format detection ---
+// Three-level format: text (plain) → post (rich text) → card (interactive)
+// Code blocks and tables MUST use card — post doesn't support them.
 
-function hasMarkdown(text: string): boolean {
-  return /\*\*.+?\*\*|`.+?`|\[.+?\]\(.+?\)|^#{1,6}\s|^[-*+]\s|^>\s|```|^\d+\.\s/m.test(text)
+function detectFormat(text: string): 'text' | 'post' | 'card' {
+  // Code blocks or markdown tables → card (only format that renders them)
+  if (/```[\s\S]*?```/.test(text) || /\|.+\|[\r\n]+\|[-:| ]+\|/.test(text)) {
+    return 'card'
+  }
+  // Markdown formatting (bold, links, headers, lists) → post rich text
+  if (/\*\*.+?\*\*|`.+?`|\[.+?\]\(.+?\)|^#{1,6}\s|^[-*+]\s|^>\s|^\d+\.\s/m.test(text)) {
+    return 'post'
+  }
+  // Plain text
+  return 'text'
+}
+
+function buildMarkdownCard(text: string): string {
+  return JSON.stringify({
+    schema: '2.0',
+    config: { wide_screen_mode: true },
+    body: {
+      elements: [{ tag: 'markdown', content: text }],
+    },
+  })
 }
 
 function markdownToPost(text: string): any {
@@ -565,12 +607,13 @@ const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 // Build interactive card JSON for permission request
 function buildPermissionCard(params: { request_id: string; tool_name: string; description: string; input_preview: string }): string {
   return JSON.stringify({
+    schema: '2.0',
     header: {
       title: { tag: 'plain_text', content: 'Claude Code 权限请求' },
       template: 'orange',
     },
-    i18n_elements: {
-      zh_cn: [
+    body: {
+      elements: [
         {
           tag: 'div',
           text: { tag: 'plain_text', content: `工具: ${params.tool_name}\n描述: ${params.description}` },
@@ -602,8 +645,12 @@ async function sendCardMessage(chatId: string, cardJson: string): Promise<void> 
 }
 
 mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
+  process.stderr.write(`feishu channel: permission request received: ${params.tool_name} (${params.request_id}), knownUsers=${knownUsers.size}, userChatMap=${userChatMap.size}\n`)
   const cardJson = buildPermissionCard(params)
-  for (const userId of knownUsers) {
+  // Use allowFrom (persisted) + knownUsers (runtime) to find all recipients
+  const access = loadAccess()
+  const recipients = new Set([...access.allowFrom, ...knownUsers])
+  for (const userId of recipients) {
     const chatId = userChatMap.get(userId)
     if (!chatId) continue
     try {
@@ -676,16 +723,28 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const access = loadAccess()
         const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
 
-        if (hasMarkdown(text)) {
-          // Rich text: convert markdown → post format
-          const postContent = { zh_cn: { title: '', content: markdownToPost(text) } }
-          await sendFeishuMessage(chatId, 'post', JSON.stringify(postContent))
-        } else {
-          // Plain text: chunk and send as text
-          const plainText = markdownToPlaintext(text)
-          const chunks = chunk(plainText, limit)
-          for (const c of chunks) {
-            await sendTextMessage(chatId, c)
+        let msgCount = 1
+        const format = detectFormat(text)
+        switch (format) {
+          case 'card':
+            // Code blocks / tables → interactive card with markdown component
+            await sendCardMessage(chatId, buildMarkdownCard(text))
+            break
+          case 'post':
+            // Rich text (bold, links, lists) → post format
+            const postContent = { zh_cn: { title: '', content: markdownToPost(text) } }
+            await sendFeishuMessage(chatId, 'post', JSON.stringify(postContent))
+            break
+          case 'text':
+          default: {
+            // Plain text → chunk and send
+            const plainText = markdownToPlaintext(text)
+            const chunks = chunk(plainText, limit)
+            msgCount = chunks.length
+            for (const c of chunks) {
+              await sendTextMessage(chatId, c)
+            }
+            break
           }
         }
 
@@ -723,7 +782,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
           }
         }
 
-        return { content: [{ type: 'text', text: `sent ${chunks.length} chunk(s)${filesSent > 0 ? ` + ${filesSent} file(s)` : ''}` }] }
+        return { content: [{ type: 'text', text: `sent ${msgCount} message(s)${filesSent > 0 ? ` + ${filesSent} file(s)` : ''}` }] }
       }
 
       case 'download_attachment': {
@@ -896,8 +955,11 @@ async function handleInbound(data: any): Promise<void> {
 
   if (!senderId) return
 
-  // Track user → chat mapping for reply routing
-  userChatMap.set(senderId, chatId)
+  // Track user → chat mapping for reply routing (persisted for permission relay)
+  if (userChatMap.get(senderId) !== chatId) {
+    userChatMap.set(senderId, chatId)
+    persistUserChatMap()
+  }
 
   // Note: In WebSocket mode, group messages only arrive when bot is @mentioned,
   // so no additional mention check is needed here.
