@@ -25,16 +25,16 @@ WeChat plugin for [Claude Code](https://claude.ai/claude-code).
 <details open>
 <summary><h3>Channel 模式</h3></summary>
 
-> 前置条件：[Claude Code](https://claude.ai/claude-code) **v2.1.81+**，使用 claude.ai 账号登录。
+> 前置条件：[Claude Code](https://claude.ai/claude-code) **v2.1.80+**，使用 claude.ai 账号登录。
 >
-> 检查版本：终端输入 `claude --version`，低于 2.1.81 请先更新：`claude update`
+> 检查版本：终端输入 `claude --version`，低于 2.1.80 请先更新：`claude update`
 
 #### 第 1 步 · 安装插件
 
 在 Claude Code 终端中输入：
-```bash
-claude plugin marketplace add lc2panda/claude-plugin-wechat
-claude plugin install wechat@lc2panda-plugins
+```
+/plugin marketplace add lc2panda/claude-plugin-wechat
+/plugin install wechat@lc2panda-plugins
 ```
 
 #### 第 2 步 · 微信登录
@@ -175,67 +175,41 @@ Follow sequentially. Steps marked **[HUMAN]** need physical user action.
 ### Step 0 — Pre-flight & mode detection
 
 ```bash
-claude --version   # >= 2.1.81 required (Channels introduced in 2.1.81)
+claude --version   # >= 2.1.80 required (Channels introduced in 2.1.80)
 bun --version      # required
 ```
 
-If Claude Code version is below 2.1.81, tell user to update: `claude update`
+If Claude Code version is below 2.1.80, tell user to update: `claude update`
 If `bun` is missing, tell user to install: `curl -fsSL https://bun.sh/install | bash`
 
 **Detect auth mode:**
 ```bash
 claude auth status --text
 ```
-- **claude.ai login** → Channel mode (Steps 1-8)
-- **API key / Console / Bedrock / Vertex** → ACP mode (Steps 1-5 then ACP setup)
+- **claude.ai login** → Channel mode (Steps 1-4)
+- **API key / Console / Bedrock / Vertex** → ACP mode (Steps 1-3)
 - Ask user if unclear.
 
 ---
 
 ### Channel mode (claude.ai users)
 
-#### Step 1 — Locate plugin root
+#### Step 1 — Install plugin
 
-Set `$PLUGIN_ROOT` to the absolute path of the directory containing this README.
-
-#### Step 2 — Install dependencies
-
-```bash
-cd "$PLUGIN_ROOT" && bun install --no-summary
+```
+/plugin marketplace add lc2panda/claude-plugin-wechat
+/plugin install wechat@lc2panda-plugins
 ```
 
-Verify: `node_modules/@modelcontextprotocol`, `node_modules/zod`, `node_modules/silk-wasm` must exist.
+If marketplace not found, run `/plugin marketplace update lc2panda/claude-plugin-wechat` first. After install, run `/reload-plugins`.
 
-#### Step 3 — Build validation
-
-```bash
-cd "$PLUGIN_ROOT" && bun build --target=bun server.ts --outdir /tmp/wechat-build-check 2>&1
-rm -rf /tmp/wechat-build-check
-```
-
-#### Step 4 — Register and install
-
-```bash
-claude plugin marketplace add lc2panda/claude-plugin-wechat
-claude plugin install wechat@lc2panda-plugins
-```
-
-#### Step 5 — WeChat QR login [HUMAN]
+#### Step 2 — WeChat QR login [HUMAN]
 
 Check if credentials exist: `cat ~/.claude/channels/wechat/credentials.json 2>/dev/null`
 
-If yes, skip to Step 6. Otherwise:
+If yes, skip to Step 3. Otherwise, tell user to run `/wechat:configure login` — QR renders in terminal, scan with WeChat, confirm on phone.
 
-1. `bun "$PLUGIN_ROOT/login-qr.ts"` — QR renders in terminal
-2. Tell user: "Scan with WeChat, confirm on phone."
-3. Parse last line JSON, extract `qrcode` field
-4. `bun "$PLUGIN_ROOT/login-poll.ts" "<qrcode>"`
-   - `scaned` → "Confirm on phone..."
-   - `refreshed:<token>` → auto-refreshed (up to 3x)
-   - `expired`/`timeout` → re-run from 5.1
-   - JSON with `token` → success, tell user to restart
-
-#### Step 6 — Restart with channel [HUMAN]
+#### Step 3 — Restart with channel [HUMAN]
 
 Ask user which permission mode:
 
@@ -249,7 +223,7 @@ claude --dangerously-skip-permissions --dangerously-load-development-channels pl
 claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 ```
 
-#### Step 7 — Verify [HUMAN]
+#### Step 4 — Verify [HUMAN]
 
 The user who scanned the QR code during login is **automatically allowlisted** — no pairing needed. Tell them to send a message from WeChat; it arrives as `<channel source="wechat" ...>`. Reply with the `reply` tool.
 
