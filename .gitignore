@@ -10,5 +10,7 @@ package-lock.json
 skills-lock.json
 CLAUDE.md
 
-# 本地开发参考文档（不提交）
+# docs 目录只允许图片，其余不提交
+docs/*.md
+docs/*.html
 docs/dev-*.md
