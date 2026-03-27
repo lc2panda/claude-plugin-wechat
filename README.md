@@ -61,6 +61,18 @@ claude --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
 
 > 停止：在 Claude Code 中按 `Ctrl+C` 或输入 `/exit`
 
+<details>
+<summary><b>更新插件</b></summary>
+
+在 Claude Code 终端中输入：
+```
+/plugin marketplace update lc2panda-plugins
+/plugin install wechat@lc2panda-plugins
+```
+重启 Claude Code 生效。
+
+</details>
+
 </details>
 
 ---
@@ -143,6 +155,17 @@ AI 会话在新目录重启，不用动终端。
 
 </details>
 
+
+<details>
+<summary><b>更新插件</b></summary>
+
+在终端输入：
+```bash
+bun add -g github:lc2panda/claude-plugin-wechat
+```
+重启 `wechat-acp` 生效。
+
+</details>
 
 > 停止：在运行 `wechat-acp` 的终端按 `Ctrl+C`
 
