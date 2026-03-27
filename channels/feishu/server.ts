@@ -262,23 +262,45 @@ async function sendFileMessage(chatId: string, fileKey: string): Promise<void> {
   })
 }
 
+// --- REST API helpers for upload (SDK has Bun Blob compatibility issues) ---
+
+async function getToken(): Promise<string> {
+  const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+  const resp = await fetch(`${domainBase}/open-apis/auth/v3/tenant_access_token/internal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_id: creds.appId, app_secret: creds.appSecret }),
+  })
+  const data = await resp.json() as any
+  return data.tenant_access_token ?? ''
+}
+
 // Upload image to Feishu → returns image_key
 async function uploadImage(filePath: string): Promise<string> {
-  const file = Bun.file(filePath)
+  const token = await getToken()
+  if (!token) throw new Error('Failed to get token')
+  const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+  const fileData = readFileSync(filePath)
+  const fileName = filePath.split('/').pop() ?? 'image.png'
   const formData = new FormData()
   formData.append('image_type', 'message')
-  formData.append('image', file)
+  formData.append('image', new Blob([fileData]), fileName)
 
-  const resp = await larkClient.im.v1.image.create({
-    data: { image_type: 'message', image: file as any },
+  const resp = await fetch(`${domainBase}/open-apis/im/v1/images`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData,
   })
-  return (resp as any)?.image_key ?? ''
+  const result = await resp.json() as any
+  return result?.data?.image_key ?? ''
 }
 
 // Upload file to Feishu → returns file_key
 async function uploadFile(filePath: string, fileName: string): Promise<string> {
-  const file = Bun.file(filePath)
-  const stat = statSync(filePath)
+  const token = await getToken()
+  if (!token) throw new Error('Failed to get token')
+  const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+  const fileData = readFileSync(filePath)
   const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
   const fileType = ['opus', 'mp4'].includes(ext) ? ext
     : ['pdf'].includes(ext) ? 'pdf'
@@ -287,14 +309,18 @@ async function uploadFile(filePath: string, fileName: string): Promise<string> {
     : ['ppt', 'pptx'].includes(ext) ? 'ppt'
     : 'stream'
 
-  const resp = await larkClient.im.v1.file.create({
-    data: {
-      file_type: fileType as any,
-      file_name: fileName,
-      file: file as any,
-    },
+  const formData = new FormData()
+  formData.append('file_type', fileType)
+  formData.append('file_name', fileName)
+  formData.append('file', new Blob([fileData]), fileName)
+
+  const resp = await fetch(`${domainBase}/open-apis/im/v1/files`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData,
   })
-  return (resp as any)?.file_key ?? ''
+  const result = await resp.json() as any
+  return result?.data?.file_key ?? ''
 }
 
 // --- Text utilities ---
@@ -397,14 +423,24 @@ function buildPermissionCard(params: { request_id: string; tool_name: string; de
 }
 
 async function sendCardMessage(chatId: string, cardJson: string): Promise<void> {
-  await larkClient.im.v1.message.create({
-    params: { receive_id_type: 'chat_id' },
-    data: {
+  // Use REST API directly (SDK has Bun compatibility issues with some message types)
+  const token = await getToken()
+  if (!token) throw new Error('Failed to get token for card message')
+  const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+  const resp = await fetch(`${domainBase}/open-apis/im/v1/messages?receive_id_type=chat_id`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
       receive_id: chatId,
       content: cardJson,
       msg_type: 'interactive',
-    },
+    }),
   })
+  const result = await resp.json() as any
+  if (result.code !== 0) throw new Error(`Card send failed: ${result.code} ${result.msg}`)
 }
 
 mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
@@ -533,47 +569,34 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
         mkdirSync(INBOX_DIR, { recursive: true, mode: 0o700 })
 
-        let data: Buffer
+        // Use REST API directly (SDK stream handling has Bun compatibility issues)
+        const domainBase = DOMAIN === Lark.Domain.Lark
+          ? 'https://open.larksuite.com'
+          : 'https://open.feishu.cn'
+
+        // Get tenant_access_token
+        const tokenResp = await fetch(`${domainBase}/open-apis/auth/v3/tenant_access_token/internal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_id: creds.appId, app_secret: creds.appSecret }),
+        })
+        const tokenData = await tokenResp.json() as any
+        const token = tokenData.tenant_access_token
+        if (!token) throw new Error('Failed to get tenant_access_token')
+
+        let downloadUrl: string
         if (info.type === 'image') {
-          const resp = await larkClient.im.v1.image.get({
-            path: { image_key: info.fileKey },
-          })
-          // SDK returns a Readable stream for binary data
-          const chunks: Buffer[] = []
-          const stream = resp as any
-          if (stream && typeof stream[Symbol.asyncIterator] === 'function') {
-            for await (const chunk of stream) {
-              chunks.push(Buffer.from(chunk))
-            }
-            data = Buffer.concat(chunks)
-          } else if (stream && typeof stream.arrayBuffer === 'function') {
-            data = Buffer.from(await stream.arrayBuffer())
-          } else if (Buffer.isBuffer(stream)) {
-            data = stream
-          } else {
-            data = Buffer.from(String(stream))
-          }
+          downloadUrl = `${domainBase}/open-apis/im/v1/images/${info.fileKey}`
         } else {
-          const resp = await larkClient.im.v1.messageResource.get({
-            path: { message_id: info.messageId, file_key: info.fileKey },
-            params: { type: info.type === 'audio' ? 'file' : info.type },
-          })
-          // SDK returns a Readable stream for binary data
-          const chunks: Buffer[] = []
-          const stream = resp as any
-          if (stream && typeof stream[Symbol.asyncIterator] === 'function') {
-            for await (const chunk of stream) {
-              chunks.push(Buffer.from(chunk))
-            }
-            data = Buffer.concat(chunks)
-          } else if (stream && typeof stream.arrayBuffer === 'function') {
-            data = Buffer.from(await stream.arrayBuffer())
-          } else if (Buffer.isBuffer(stream)) {
-            data = stream
-          } else {
-            data = Buffer.from(String(stream))
-          }
+          const resourceType = info.type === 'audio' ? 'file' : info.type
+          downloadUrl = `${domainBase}/open-apis/im/v1/messages/${info.messageId}/resources/${info.fileKey}?type=${resourceType}`
         }
+
+        const dlResp = await fetch(downloadUrl, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (!dlResp.ok) throw new Error(`Download failed: ${dlResp.status} ${await dlResp.text()}`)
+        const data = Buffer.from(await dlResp.arrayBuffer())
 
         const safeName = info.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
         const outPath = join(INBOX_DIR, `${Date.now()}-${safeName}`)
@@ -604,6 +627,11 @@ function extractText(data: any): string {
   const msgType = msg.message_type
   const content = msg.content ? JSON.parse(msg.content) : {}
   const messageId = msg.message_id ?? ''
+
+  // Debug: log raw message structure
+  if (isDebugMode() || msgType !== 'text') {
+    process.stderr.write(`feishu channel: msg type=${msgType} id=${messageId} content=${JSON.stringify(content)}\n`)
+  }
 
   switch (msgType) {
     case 'text':
@@ -682,7 +710,7 @@ async function handleInbound(data: any): Promise<void> {
   // In group chats, only respond when @mentioned
   if (chatType === 'group') {
     const mentions = msg.mentions ?? []
-    const botMentioned = mentions.some((m: any) => m.id?.open_id === creds.appId || m.name === 'bot')
+    const botMentioned = mentions.some((m: any) => m.id?.open_id === creds.appId)
     if (!botMentioned) return
   }
 
