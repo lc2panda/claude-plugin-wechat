@@ -369,19 +369,61 @@ const PermissionRequestSchema = z.object({
 
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 
+// Build interactive card JSON for permission request
+function buildPermissionCard(params: { request_id: string; tool_name: string; description: string; input_preview: string }): string {
+  return JSON.stringify({
+    config: { wide_screen_mode: true },
+    header: {
+      title: { tag: 'plain_text', content: 'Claude Code 权限请求' },
+      template: 'orange',
+    },
+    elements: [
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `**工具**: \`${params.tool_name}\`\n**描述**: ${params.description}`,
+        },
+      },
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `回复 \`yes ${params.request_id}\` 批准  |  \`no ${params.request_id}\` 拒绝`,
+        },
+      },
+    ],
+  })
+}
+
+async function sendCardMessage(chatId: string, cardJson: string): Promise<void> {
+  await larkClient.im.v1.message.create({
+    params: { receive_id_type: 'chat_id' },
+    data: {
+      receive_id: chatId,
+      content: cardJson,
+      msg_type: 'interactive',
+    },
+  })
+}
+
 mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
-  // Forward permission request to all known users
+  const cardJson = buildPermissionCard(params)
   for (const userId of knownUsers) {
     const chatId = userChatMap.get(userId)
     if (!chatId) continue
     try {
-      await sendTextMessage(
-        chatId,
-        `Claude 请求权限：${params.tool_name}\n${params.description}\n\n` +
-        `回复 "yes ${params.request_id}" 批准\n回复 "no ${params.request_id}" 拒绝`,
-      )
+      await sendCardMessage(chatId, cardJson)
     } catch (err) {
-      process.stderr.write(`feishu channel: permission relay failed: ${err}\n`)
+      // Fallback to text if card fails
+      try {
+        await sendTextMessage(
+          chatId,
+          `Claude 请求权限：${params.tool_name}\n${params.description}\n\n` +
+          `回复 "yes ${params.request_id}" 批准\n回复 "no ${params.request_id}" 拒绝`,
+        )
+      } catch {}
+      process.stderr.write(`feishu channel: permission card failed, fell back to text: ${err}\n`)
     }
   }
 })
