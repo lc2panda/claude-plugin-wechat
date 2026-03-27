@@ -455,6 +455,7 @@ async function refreshTypingTicket(): Promise<string> {
   if (typingTicket && Date.now() < typingTicketExpiry) return typingTicket
   try {
     const resp = await apiFetch('ilink/bot/getconfig', {
+      ilink_user_id: creds.userId ?? '',
       base_info: { channel_version: '1.0.0' },
     })
     if (resp.typing_ticket) {
