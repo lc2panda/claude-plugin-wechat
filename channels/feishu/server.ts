@@ -229,40 +229,92 @@ approvalTimer.unref()
 
 // --- Feishu message sending ---
 
-async function sendTextMessage(chatId: string, text: string): Promise<void> {
-  await larkClient.im.v1.message.create({
-    params: { receive_id_type: 'chat_id' },
-    data: {
-      receive_id: chatId,
-      content: JSON.stringify({ text }),
-      msg_type: 'text',
+// --- Feishu message sending (REST API — SDK has Bun compatibility issues) ---
+
+async function sendFeishuMessage(chatId: string, msgType: string, content: string): Promise<void> {
+  const token = await getTokenCached()
+  if (!token) throw new Error('Failed to get token')
+  const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+  const resp = await fetch(`${domainBase}/open-apis/im/v1/messages?receive_id_type=chat_id`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=utf-8',
     },
+    body: JSON.stringify({ receive_id: chatId, content, msg_type: msgType }),
   })
+  const result = await resp.json() as any
+  if (result.code !== 0) {
+    process.stderr.write(`feishu channel: send ${msgType} failed: ${result.code} ${result.msg}\n`)
+  }
+}
+
+async function sendTextMessage(chatId: string, text: string): Promise<void> {
+  await sendFeishuMessage(chatId, 'text', JSON.stringify({ text }))
 }
 
 async function sendImageMessage(chatId: string, imageKey: string): Promise<void> {
-  await larkClient.im.v1.message.create({
-    params: { receive_id_type: 'chat_id' },
-    data: {
-      receive_id: chatId,
-      content: JSON.stringify({ image_key: imageKey }),
-      msg_type: 'image',
-    },
-  })
+  await sendFeishuMessage(chatId, 'image', JSON.stringify({ image_key: imageKey }))
 }
 
 async function sendFileMessage(chatId: string, fileKey: string): Promise<void> {
-  await larkClient.im.v1.message.create({
-    params: { receive_id_type: 'chat_id' },
-    data: {
-      receive_id: chatId,
-      content: JSON.stringify({ file_key: fileKey }),
-      msg_type: 'file',
-    },
-  })
+  await sendFeishuMessage(chatId, 'file', JSON.stringify({ file_key: fileKey }))
+}
+
+// --- Typing indicator via emoji reaction ---
+// Feishu has no typing API, so we use emoji reaction as a visual indicator.
+// Add "Typing" emoji when processing, remove when reply is sent.
+
+let typingReactionId: string | null = null
+let typingMessageId: string | null = null
+
+async function addTypingReaction(messageId: string): Promise<void> {
+  try {
+    const token = await getTokenCached()
+    const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+    const resp = await fetch(`${domainBase}/open-apis/im/v1/messages/${messageId}/reactions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({ reaction_type: { emoji_type: 'Typing' } }),
+    })
+    const result = await resp.json() as any
+    if (result.code === 0 && result.data?.reaction_id) {
+      typingReactionId = result.data.reaction_id
+      typingMessageId = messageId
+    }
+  } catch {}
+}
+
+async function removeTypingReaction(): Promise<void> {
+  if (!typingReactionId || !typingMessageId) return
+  try {
+    const token = await getTokenCached()
+    const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+    await fetch(`${domainBase}/open-apis/im/v1/messages/${typingMessageId}/reactions/${typingReactionId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+  } catch {}
+  typingReactionId = null
+  typingMessageId = null
 }
 
 // --- REST API helpers for upload (SDK has Bun Blob compatibility issues) ---
+
+// Cached token to avoid repeated requests
+let _cachedToken = ''
+let _tokenExpiry = 0
+
+async function getTokenCached(): Promise<string> {
+  if (_cachedToken && Date.now() < _tokenExpiry) return _cachedToken
+  const token = await getToken()
+  _cachedToken = token
+  _tokenExpiry = Date.now() + 30 * 60 * 1000 // 30 min cache (token valid 2h)
+  return token
+}
 
 async function getToken(): Promise<string> {
   const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
@@ -359,6 +411,121 @@ function chunk(text: string, limit: number): string[] {
   return out
 }
 
+// --- Markdown detection and post conversion ---
+
+function hasMarkdown(text: string): boolean {
+  return /\*\*.+?\*\*|`.+?`|\[.+?\]\(.+?\)|^#{1,6}\s|^[-*+]\s|^>\s|```|^\d+\.\s/m.test(text)
+}
+
+function markdownToPost(text: string): any {
+  const lines = text.split('\n')
+  const content: any[][] = []
+
+  let inCodeBlock = false
+  let codeLines: string[] = []
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCodeBlock) {
+        // End code block
+        content.push([{ tag: 'text', text: codeLines.join('\n') }])
+        codeLines = []
+        inCodeBlock = false
+      } else {
+        inCodeBlock = true
+      }
+      continue
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line)
+      continue
+    }
+
+    if (line.trim() === '') {
+      content.push([{ tag: 'text', text: '\n' }])
+      continue
+    }
+
+    // Heading
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)/)
+    if (headingMatch) {
+      content.push([{ tag: 'text', text: headingMatch[2], style: ['bold'] }])
+      continue
+    }
+
+    // List items
+    if (/^[-*+]\s/.test(line)) {
+      content.push(parseInline('• ' + line.replace(/^[-*+]\s+/, '')))
+      continue
+    }
+    if (/^\d+\.\s/.test(line)) {
+      content.push(parseInline(line))
+      continue
+    }
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      content.push(parseInline(line.slice(2)))
+      continue
+    }
+
+    // Regular line
+    content.push(parseInline(line))
+  }
+
+  // Flush remaining code block
+  if (inCodeBlock && codeLines.length > 0) {
+    content.push([{ tag: 'text', text: codeLines.join('\n') }])
+  }
+
+  return content
+}
+
+function parseInline(text: string): any[] {
+  const nodes: any[] = []
+  let rest = text
+
+  while (rest.length > 0) {
+    // Bold **text**
+    const boldMatch = rest.match(/^(.*?)\*\*(.+?)\*\*/)
+    if (boldMatch) {
+      if (boldMatch[1]) nodes.push(...parseInlineSimple(boldMatch[1]))
+      nodes.push({ tag: 'text', text: boldMatch[2], style: ['bold'] })
+      rest = rest.slice(boldMatch[0].length)
+      continue
+    }
+
+    // Inline code `text`
+    const codeMatch = rest.match(/^(.*?)`(.+?)`/)
+    if (codeMatch) {
+      if (codeMatch[1]) nodes.push(...parseInlineSimple(codeMatch[1]))
+      nodes.push({ tag: 'text', text: codeMatch[2], style: ['bold'] })
+      rest = rest.slice(codeMatch[0].length)
+      continue
+    }
+
+    // Link [text](url)
+    const linkMatch = rest.match(/^(.*?)\[(.+?)\]\((.+?)\)/)
+    if (linkMatch) {
+      if (linkMatch[1]) nodes.push(...parseInlineSimple(linkMatch[1]))
+      nodes.push({ tag: 'a', text: linkMatch[2], href: linkMatch[3] })
+      rest = rest.slice(linkMatch[0].length)
+      continue
+    }
+
+    // No more matches — plain text
+    nodes.push({ tag: 'text', text: rest })
+    break
+  }
+
+  return nodes.length > 0 ? nodes : [{ tag: 'text', text }]
+}
+
+function parseInlineSimple(text: string): any[] {
+  return [{ tag: 'text', text }]
+}
+
 // --- MCP Channel server ---
 
 const mcp = new Server(
@@ -398,49 +565,40 @@ const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 // Build interactive card JSON for permission request
 function buildPermissionCard(params: { request_id: string; tool_name: string; description: string; input_preview: string }): string {
   return JSON.stringify({
-    config: { wide_screen_mode: true },
     header: {
       title: { tag: 'plain_text', content: 'Claude Code 权限请求' },
       template: 'orange',
     },
-    elements: [
-      {
-        tag: 'div',
-        text: {
-          tag: 'lark_md',
-          content: `**工具**: \`${params.tool_name}\`\n**描述**: ${params.description}`,
+    i18n_elements: {
+      zh_cn: [
+        {
+          tag: 'div',
+          text: { tag: 'plain_text', content: `工具: ${params.tool_name}\n描述: ${params.description}` },
         },
-      },
-      {
-        tag: 'div',
-        text: {
-          tag: 'lark_md',
-          content: `回复 \`yes ${params.request_id}\` 批准  |  \`no ${params.request_id}\` 拒绝`,
+        {
+          tag: 'action',
+          actions: [
+            {
+              tag: 'button',
+              text: { tag: 'plain_text', content: '✅ 批准' },
+              type: 'primary',
+              value: { action: 'approve', code: params.request_id },
+            },
+            {
+              tag: 'button',
+              text: { tag: 'plain_text', content: '❌ 拒绝' },
+              type: 'danger',
+              value: { action: 'deny', code: params.request_id },
+            },
+          ],
         },
-      },
-    ],
+      ],
+    },
   })
 }
 
 async function sendCardMessage(chatId: string, cardJson: string): Promise<void> {
-  // Use REST API directly (SDK has Bun compatibility issues with some message types)
-  const token = await getToken()
-  if (!token) throw new Error('Failed to get token for card message')
-  const domainBase = DOMAIN === Lark.Domain.Lark ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
-  const resp = await fetch(`${domainBase}/open-apis/im/v1/messages?receive_id_type=chat_id`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify({
-      receive_id: chatId,
-      content: cardJson,
-      msg_type: 'interactive',
-    }),
-  })
-  const result = await resp.json() as any
-  if (result.code !== 0) throw new Error(`Card send failed: ${result.code} ${result.msg}`)
+  await sendFeishuMessage(chatId, 'interactive', cardJson)
 }
 
 mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
@@ -513,14 +671,22 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const text = args.text as string
 
         if (!chatId) throw new Error('chat_id is required')
+        removeTypingReaction()
 
         const access = loadAccess()
         const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
-        const plainText = markdownToPlaintext(text)
-        const chunks = chunk(plainText, limit)
 
-        for (const c of chunks) {
-          await sendTextMessage(chatId, c)
+        if (hasMarkdown(text)) {
+          // Rich text: convert markdown → post format
+          const postContent = { zh_cn: { title: '', content: markdownToPost(text) } }
+          await sendFeishuMessage(chatId, 'post', JSON.stringify(postContent))
+        } else {
+          // Plain text: chunk and send as text
+          const plainText = markdownToPlaintext(text)
+          const chunks = chunk(plainText, limit)
+          for (const c of chunks) {
+            await sendTextMessage(chatId, c)
+          }
         }
 
         // Handle file attachments
@@ -634,8 +800,12 @@ function extractText(data: any): string {
   }
 
   switch (msgType) {
-    case 'text':
-      return content.text ?? ''
+    case 'text': {
+      // Remove @mention placeholders like @_user_1
+      let text = content.text ?? ''
+      text = text.replace(/@_user_\d+/g, '').trim()
+      return text
+    }
 
     case 'image': {
       const id = `feishu_img_${Date.now()}_${randomBytes(3).toString('hex')}`
@@ -668,6 +838,28 @@ function extractText(data: any): string {
         filename: 'audio.opus',
       })
       return `[语音 attachment_id=${id}]`
+    }
+
+    case 'media': {
+      const id = `feishu_video_${Date.now()}_${randomBytes(3).toString('hex')}`
+      pendingAttachments.set(id, {
+        messageId,
+        fileKey: content.file_key ?? '',
+        type: 'file',
+        filename: content.file_name ?? 'video.mp4',
+      })
+      return `[视频 "${content.file_name ?? 'video.mp4'}" attachment_id=${id}]`
+    }
+
+    case 'sticker': {
+      const id = `feishu_sticker_${Date.now()}_${randomBytes(3).toString('hex')}`
+      pendingAttachments.set(id, {
+        messageId,
+        fileKey: content.file_key ?? '',
+        type: 'file',
+        filename: 'sticker.png',
+      })
+      return `[表情 attachment_id=${id}]`
     }
 
     case 'post': {
@@ -707,12 +899,8 @@ async function handleInbound(data: any): Promise<void> {
   // Track user → chat mapping for reply routing
   userChatMap.set(senderId, chatId)
 
-  // In group chats, only respond when @mentioned
-  if (chatType === 'group') {
-    const mentions = msg.mentions ?? []
-    const botMentioned = mentions.some((m: any) => m.id?.open_id === creds.appId)
-    if (!botMentioned) return
-  }
+  // Note: In WebSocket mode, group messages only arrive when bot is @mentioned,
+  // so no additional mention check is needed here.
 
   const result = gate(senderId)
 
@@ -768,6 +956,10 @@ async function handleInbound(data: any): Promise<void> {
     } catch {}
     return
   }
+
+  // Add typing emoji reaction to indicate processing
+  const messageId = msg.message_id ?? ''
+  if (messageId) addTypingReaction(messageId)
 
   // Forward to Claude Code session
   const ts = new Date().toISOString()
