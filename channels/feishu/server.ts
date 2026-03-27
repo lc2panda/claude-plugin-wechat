@@ -538,13 +538,41 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
           const resp = await larkClient.im.v1.image.get({
             path: { image_key: info.fileKey },
           })
-          data = Buffer.from(await (resp as any).arrayBuffer())
+          // SDK returns a Readable stream for binary data
+          const chunks: Buffer[] = []
+          const stream = resp as any
+          if (stream && typeof stream[Symbol.asyncIterator] === 'function') {
+            for await (const chunk of stream) {
+              chunks.push(Buffer.from(chunk))
+            }
+            data = Buffer.concat(chunks)
+          } else if (stream && typeof stream.arrayBuffer === 'function') {
+            data = Buffer.from(await stream.arrayBuffer())
+          } else if (Buffer.isBuffer(stream)) {
+            data = stream
+          } else {
+            data = Buffer.from(String(stream))
+          }
         } else {
           const resp = await larkClient.im.v1.messageResource.get({
             path: { message_id: info.messageId, file_key: info.fileKey },
-            params: { type: info.type },
+            params: { type: info.type === 'audio' ? 'file' : info.type },
           })
-          data = Buffer.from(await (resp as any).arrayBuffer())
+          // SDK returns a Readable stream for binary data
+          const chunks: Buffer[] = []
+          const stream = resp as any
+          if (stream && typeof stream[Symbol.asyncIterator] === 'function') {
+            for await (const chunk of stream) {
+              chunks.push(Buffer.from(chunk))
+            }
+            data = Buffer.concat(chunks)
+          } else if (stream && typeof stream.arrayBuffer === 'function') {
+            data = Buffer.from(await stream.arrayBuffer())
+          } else if (Buffer.isBuffer(stream)) {
+            data = stream
+          } else {
+            data = Buffer.from(String(stream))
+          }
         }
 
         const safeName = info.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
