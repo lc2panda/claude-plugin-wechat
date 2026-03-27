@@ -9,3 +9,6 @@ package-lock.json
 .factory/
 skills-lock.json
 CLAUDE.md
+
+# 本地开发参考文档（不提交）
+docs/dev-*.md
