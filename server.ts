@@ -292,6 +292,35 @@ async function cancelTyping(toUserId: string): Promise<void> {
   } catch {}
 }
 
+// --- Typing keepalive (Channel mode) ---
+// Protocol spec recommends 5-second keepalive for long-running operations.
+// Channel mode has no intermediate MCP callbacks during Claude's thinking,
+// so we use a timer to continuously refresh the typing indicator.
+const TYPING_KEEPALIVE_MS = 5_000
+const TYPING_KEEPALIVE_MAX_MS = 5 * 60_000 // safety: auto-stop after 5 minutes
+let typingKeepAliveTimer: ReturnType<typeof setInterval> | null = null
+let typingKeepAliveTimeout: ReturnType<typeof setTimeout> | null = null
+
+function startTypingKeepAlive(userId: string, contextToken: string): void {
+  stopTypingKeepAlive()
+  sendTyping(userId, contextToken).catch(() => {})
+  typingKeepAliveTimer = setInterval(() => {
+    sendTyping(userId, contextToken).catch(() => {})
+  }, TYPING_KEEPALIVE_MS)
+  typingKeepAliveTimeout = setTimeout(() => stopTypingKeepAlive(), TYPING_KEEPALIVE_MAX_MS)
+}
+
+function stopTypingKeepAlive(): void {
+  if (typingKeepAliveTimer) {
+    clearInterval(typingKeepAliveTimer)
+    typingKeepAliveTimer = null
+  }
+  if (typingKeepAliveTimeout) {
+    clearTimeout(typingKeepAliveTimeout)
+    typingKeepAliveTimeout = null
+  }
+}
+
 // --- CDN media upload ---
 // Based on @tencent-weixin/openclaw-weixin v1.0.3 upload pipeline:
 // 1. Generate random filekey + aeskey
@@ -745,7 +774,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
         if (!contextToken) throw new Error('context_token is required')
         assertAllowedUser(userId)
-        sendTyping(userId, contextToken).catch(() => {})
+        stopTypingKeepAlive()
 
         const access = loadAccess()
         const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
@@ -938,9 +967,9 @@ async function handleInbound(msg: any): Promise<void> {
     return
   }
 
-  // Send typing indicator
+  // Start typing keepalive — refreshes every 5s until reply tool is called
   if (msg.context_token) {
-    sendTyping(senderId, msg.context_token).catch(() => {})
+    startTypingKeepAlive(senderId, msg.context_token)
   }
 
   // Check for permission relay verdict
