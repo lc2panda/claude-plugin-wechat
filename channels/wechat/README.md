@@ -1,0 +1,6 @@
+- `server.ts` — MCP Channel 模式主服务
+- `acp-bridge.ts` — ACP 桥接模式
+- `login-qr.ts` — QR 登录步骤 1
+- `login-poll.ts` — QR 登录步骤 2
+
+一旦这里的结构发生变化，请务必更新我。
