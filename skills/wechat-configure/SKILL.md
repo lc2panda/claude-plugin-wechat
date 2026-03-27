@@ -43,10 +43,10 @@ Read both state files and give the user a complete picture:
 ### `login` — QR code login
 
 This is a TWO-STEP process. The scripts are in the plugin install directory.
-Find the plugin root by looking for the `login-qr.ts` file:
+Find the plugin root by looking for the `channels/wechat/login-qr.ts` file:
 
 ```
-~/.claude/plugins/cache/lc2panda-plugins/wechat/*/login-qr.ts
+~/.claude/plugins/cache/lc2panda-plugins/wechat/*/channels/wechat/login-qr.ts
 ```
 
 Use `ls` to resolve the wildcard and get the actual path.
@@ -54,7 +54,7 @@ Use `ls` to resolve the wildcard and get the actual path.
 **Step 1: Fetch and display QR code**
 
 ```bash
-bun <plugin-root>/login-qr.ts
+bun <plugin-root>/channels/wechat/login-qr.ts
 ```
 
 This script:
@@ -74,7 +74,7 @@ for step 2.
 After the user says they've scanned (or just proceed after showing the QR):
 
 ```bash
-bun <plugin-root>/login-poll.ts <qrcode>
+bun <plugin-root>/channels/wechat/login-poll.ts <qrcode>
 ```
 
 This script polls the WeChat API for scan status. It outputs one line:
