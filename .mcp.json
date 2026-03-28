@@ -2,11 +2,11 @@
   "mcpServers": {
     "wechat": {
       "command": "bun",
-      "args": ["channels/wechat/server.ts"]
+      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT}", "--shell=bun", "--silent", "start:wechat"]
     },
     "feishu": {
       "command": "bun",
-      "args": ["channels/feishu/server.ts"]
+      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT}", "--shell=bun", "--silent", "start:feishu"]
     }
   }
 }
