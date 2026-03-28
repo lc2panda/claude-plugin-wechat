@@ -473,7 +473,21 @@ async function enqueueMessage(userId: string, chatId: string, promptBlocks: acp.
   if (!session || session.process.killed || session.process.exitCode !== null) {
     if (userSessions.has(userId)) userSessions.delete(userId)
     if (userSessions.size >= MAX_CONCURRENT_USERS) evictOldestSession()
-    session = await createSession(userId, chatId)
+    try {
+      session = await createSession(userId, chatId)
+    } catch (err) {
+      process.stderr.write(`feishu acp-bridge [${userId}]: session creation failed: ${err}\n`)
+      try {
+        await sendTextMessage(chatId,
+          `⚠️ Agent 启动失败: ${String(err)}\n\n` +
+          `常见原因：\n` +
+          `1. 未安装 Node.js/npx\n` +
+          `2. npx @zed-industries/claude-code-acp 下载超时\n` +
+          `3. 未设置 ANTHROPIC_API_KEY\n\n` +
+          `请检查终端输出的完整错误信息`)
+      } catch {}
+      return
+    }
   }
   session.chatId = chatId
   session.lastActivity = Date.now()

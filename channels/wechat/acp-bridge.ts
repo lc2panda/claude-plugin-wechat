@@ -1229,7 +1229,21 @@ async function enqueueMessage(userId: string, promptBlocks: acp.ContentBlock[], 
     if (userSessions.size >= MAX_CONCURRENT_USERS) {
       evictOldestSession()
     }
-    session = await createSession(userId, contextToken)
+    try {
+      session = await createSession(userId, contextToken)
+    } catch (err) {
+      process.stderr.write(`wechat acp-bridge [${userId}]: session creation failed: ${err}\n`)
+      try {
+        await sendMessage(userId,
+          `⚠️ Agent 启动失败: ${String(err)}\n\n` +
+          `常见原因：\n` +
+          `1. 未安装 Node.js/npx\n` +
+          `2. npx @zed-industries/claude-code-acp 下载超时\n` +
+          `3. 未设置 ANTHROPIC_API_KEY`,
+          contextToken)
+      } catch {}
+      return
+    }
   }
 
   // Always update contextToken to the latest
