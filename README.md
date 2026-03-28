@@ -27,8 +27,8 @@
 
 ---
 
-<details open>
-<summary><h3>微信</h3></summary>
+<details>
+<summary><h3>👇 微信</h3></summary>
 
 <details>
 <summary><b>Channel 模式</b>（claude.ai 用户）</summary>
@@ -59,20 +59,12 @@
 
 </details>
 
-<details>
-<summary><b>更新插件</b></summary>
-
-- Channel：`/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启
-- ACP：`bun add -g github:lc2panda/claude-plugin-wechat` → 重启 wechat-acp
-
-</details>
-
 </details>
 
 ---
 
-<details open>
-<summary><h3>飞书/Lark</h3></summary>
+<details>
+<summary><h3>👇 飞书/Lark</h3></summary>
 
 #### 第一步 · 创建应用
 
@@ -128,13 +120,18 @@
 
 </details>
 
-<details>
-<summary><b>更新插件</b></summary>
-
-- Channel：`/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启
-- ACP：`bun add -g github:lc2panda/claude-plugin-wechat` → 重启 feishu-acp
-
 </details>
+
+---
+
+<details>
+<summary><h3>👇 更新插件</h3></summary>
+
+| 模式 | 命令 |
+|------|------|
+| Channel | `/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启 Claude Code |
+| ACP（微信） | `bun add -g github:lc2panda/claude-plugin-wechat` → 重启 wechat-acp |
+| ACP（飞书） | `bun add -g github:lc2panda/claude-plugin-wechat` → 重启 feishu-acp |
 
 </details>
 
@@ -161,7 +158,7 @@
 
 ## AI 看这里
 
-以下内容供 Claude Code 自动执行安装和配置。全中文。
+以下内容供 Claude Code 自动执行安装和配置。
 
 ### 第 0 步 · 环境检测
 
