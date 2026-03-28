@@ -401,6 +401,12 @@ async function createSession(userId: string, chatId: string): Promise<UserSessio
 
   if (!proc.stdin || !proc.stdout) { proc.kill(); throw new Error('Failed to get agent stdio') }
 
+  // Wait briefly to detect immediate crash (e.g. missing API key, bad binary)
+  await new Promise(resolve => setTimeout(resolve, 500))
+  if (proc.exitCode !== null) {
+    throw new Error(`Agent process exited immediately (code ${proc.exitCode}). Check that ANTHROPIC_API_KEY is set and the agent command is valid.`)
+  }
+
   const input = Writable.toWeb(proc.stdin)
   const output = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>
   const stream = acp.ndJsonStream(input, output)
@@ -460,7 +466,7 @@ async function processQueue(session: UserSession): Promise<void> {
           userSessions.delete(session.userId)
           return
         }
-        try { await sendTextMessage(pending.chatId, `⚠️ Agent error: ${String(err)}`) } catch {}
+        try { await sendTextMessage(pending.chatId, `⚠️ Agent error: ${err instanceof Error ? err.message : JSON.stringify(err)}`) } catch {}
       }
     }
   } finally {
@@ -479,7 +485,7 @@ async function enqueueMessage(userId: string, chatId: string, promptBlocks: acp.
       process.stderr.write(`feishu acp-bridge [${userId}]: session creation failed: ${err}\n`)
       try {
         await sendTextMessage(chatId,
-          `⚠️ Agent 启动失败: ${String(err)}\n\n` +
+          `⚠️ Agent 启动失败: ${err instanceof Error ? err.message : JSON.stringify(err)}\n\n` +
           `常见原因：\n` +
           `1. 未安装 Node.js/npx\n` +
           `2. npx @zed-industries/claude-code-acp 下载超时\n` +

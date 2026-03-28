@@ -985,7 +985,7 @@ class WeChatAcpClient implements acp.Client {
       const content = await fs.promises.readFile(params.path, 'utf-8')
       return { content }
     } catch (err) {
-      throw new Error(`Failed to read file ${params.path}: ${String(err)}`)
+      throw new Error(`Failed to read file ${params.path}: ${err instanceof Error ? err.message : JSON.stringify(err)}`)
     }
   }
 
@@ -994,7 +994,7 @@ class WeChatAcpClient implements acp.Client {
       await fs.promises.writeFile(params.path, params.content, 'utf-8')
       return {}
     } catch (err) {
-      throw new Error(`Failed to write file ${params.path}: ${String(err)}`)
+      throw new Error(`Failed to write file ${params.path}: ${err instanceof Error ? err.message : JSON.stringify(err)}`)
     }
   }
 
@@ -1080,12 +1080,18 @@ async function createSession(userId: string, contextToken: string): Promise<User
   })
 
   proc.on('error', (err) => {
-    process.stderr.write(`wechat acp-bridge [${userId}]: agent process error: ${String(err)}\n`)
+    process.stderr.write(`wechat acp-bridge [${userId}]: agent process error: ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
   })
 
   if (!proc.stdin || !proc.stdout) {
     proc.kill()
     throw new Error('Failed to get agent process stdio')
+  }
+
+  // Wait briefly to detect immediate crash (e.g. missing API key, bad binary)
+  await new Promise(resolve => setTimeout(resolve, 500))
+  if (proc.exitCode !== null) {
+    throw new Error(`Agent process exited immediately (code ${proc.exitCode}). Check that ANTHROPIC_API_KEY is set and the agent command is valid.`)
   }
 
   // Set up ACP connection
@@ -1194,7 +1200,7 @@ async function processQueue(session: UserSession): Promise<void> {
 
         cancelTyping(session.userId).catch(() => {})
       } catch (err) {
-        process.stderr.write(`wechat acp-bridge [${session.userId}]: agent prompt error: ${String(err)}\n`)
+        process.stderr.write(`wechat acp-bridge [${session.userId}]: agent prompt error: ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
 
         // Check if agent died
         if (session.process.killed || session.process.exitCode !== null) {
@@ -1207,7 +1213,7 @@ async function processQueue(session: UserSession): Promise<void> {
         try {
           await sendMessage(
             session.userId,
-            `⚠️ Agent error: ${String(err)}`,
+            `⚠️ Agent error: ${err instanceof Error ? err.message : JSON.stringify(err)}`,
             pending.contextToken,
           )
         } catch {
@@ -1235,7 +1241,7 @@ async function enqueueMessage(userId: string, promptBlocks: acp.ContentBlock[], 
       process.stderr.write(`wechat acp-bridge [${userId}]: session creation failed: ${err}\n`)
       try {
         await sendMessage(userId,
-          `⚠️ Agent 启动失败: ${String(err)}\n\n` +
+          `⚠️ Agent 启动失败: ${err instanceof Error ? err.message : JSON.stringify(err)}\n\n` +
           `常见原因：\n` +
           `1. 未安装 Node.js/npx\n` +
           `2. npx @zed-industries/claude-code-acp 下载超时\n` +
@@ -1254,7 +1260,7 @@ async function enqueueMessage(userId: string, promptBlocks: acp.ContentBlock[], 
   if (!session.processing) {
     session.processing = true
     processQueue(session).catch((err) => {
-      process.stderr.write(`wechat acp-bridge [${userId}]: queue processing error: ${String(err)}\n`)
+      process.stderr.write(`wechat acp-bridge [${userId}]: queue processing error: ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
     })
   }
 }
