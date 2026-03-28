@@ -1110,9 +1110,11 @@ async function createSession(userId: string, contextToken: string): Promise<User
   const stream = acp.ndJsonStream(input, output)
   const connection = new acp.ClientSideConnection(() => client, stream)
 
-  // Initialize ACP
+  // Initialize ACP (with 30s timeout to prevent npx download hanging)
   process.stderr.write(`wechat acp-bridge [${userId}]: initializing ACP connection...\n`)
-  const initResult = await connection.initialize({
+  const ACP_INIT_TIMEOUT_MS = 30_000
+  const initResult = await Promise.race([
+    connection.initialize({
     protocolVersion: acp.PROTOCOL_VERSION,
     clientInfo: {
       name: 'wechat-acp-bridge',
@@ -1125,7 +1127,9 @@ async function createSession(userId: string, contextToken: string): Promise<User
         writeTextFile: true,
       },
     },
-  })
+  }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`ACP initialization timed out after ${ACP_INIT_TIMEOUT_MS / 1000}s — agent may be downloading dependencies`)), ACP_INIT_TIMEOUT_MS)),
+  ])
   process.stderr.write(`wechat acp-bridge [${userId}]: ACP initialized (protocol v${initResult.protocolVersion})\n`)
 
   // Create session
@@ -1147,7 +1151,12 @@ async function createSession(userId: string, contextToken: string): Promise<User
     lastActivity: Date.now(),
   }
 
-  // Clean up on process exit
+  // Clean up on process exit or stream error
+  proc.stdin!.on('error', () => {
+    process.stderr.write(`wechat acp-bridge [${userId}]: stdin stream error, cleaning session\n`)
+    const s = userSessions.get(userId)
+    if (s?.process === proc) userSessions.delete(userId)
+  })
   proc.on('exit', (code, signal) => {
     process.stderr.write(`wechat acp-bridge [${userId}]: agent exited code=${code} signal=${signal}\n`)
     const s = userSessions.get(userId)

@@ -423,11 +423,16 @@ async function createSession(userId: string, chatId: string): Promise<UserSessio
   const stream = acp.ndJsonStream(input, output)
   const connection = new acp.ClientSideConnection(() => client, stream)
 
-  const initResult = await connection.initialize({
-    protocolVersion: acp.PROTOCOL_VERSION,
-    clientInfo: { name: 'feishu-acp-bridge', title: 'Feishu ACP Bridge', version: '1.0.0' },
-    clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
-  })
+  // Initialize ACP (with 30s timeout to prevent npx download hanging)
+  const ACP_INIT_TIMEOUT_MS = 30_000
+  const initResult = await Promise.race([
+    connection.initialize({
+      protocolVersion: acp.PROTOCOL_VERSION,
+      clientInfo: { name: 'feishu-acp-bridge', title: 'Feishu ACP Bridge', version: '1.0.0' },
+      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
+    }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`ACP initialization timed out after ${ACP_INIT_TIMEOUT_MS / 1000}s — agent may be downloading dependencies`)), ACP_INIT_TIMEOUT_MS)),
+  ])
 
   const sessionResult = await connection.newSession({ cwd: getUserCwd(userId), mcpServers: [] })
 
@@ -436,6 +441,12 @@ async function createSession(userId: string, chatId: string): Promise<UserSessio
     sessionId: sessionResult.sessionId, queue: [], processing: false, lastActivity: Date.now(),
   }
 
+  // Clean up on stream error (detect broken pipe before next write)
+  proc.stdin!.on('error', () => {
+    process.stderr.write(`feishu acp-bridge [${userId}]: stdin stream error, cleaning session\n`)
+    const s = userSessions.get(userId)
+    if (s?.process === proc) userSessions.delete(userId)
+  })
   proc.on('exit', (code, signal) => {
     process.stderr.write(`feishu acp-bridge [${userId}]: agent exited code=${code} signal=${signal}\n`)
     const s = userSessions.get(userId)
@@ -649,7 +660,13 @@ function shutdown(reason: string): void {
   process.stderr.write(`feishu acp-bridge: shutting down (${reason})\n`)
 
   for (const [uid, s] of userSessions) {
-    if (!s.process.killed) s.process.kill('SIGTERM')
+    if (!s.process.killed) {
+      s.process.kill('SIGTERM')
+      // Force kill after 5s if still alive (prevents zombie processes on Windows)
+      setTimeout(() => {
+        if (!s.process.killed) s.process.kill('SIGKILL')
+      }, 5_000).unref()
+    }
   }
   userSessions.clear()
   clearInterval(cleanupTimer)
