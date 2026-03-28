@@ -1094,9 +1094,19 @@ async function createSession(userId: string, contextToken: string): Promise<User
     throw new Error(`Agent process exited immediately (code ${proc.exitCode}). Check that ANTHROPIC_API_KEY is set and the agent command is valid.`)
   }
 
-  // Set up ACP connection
-  const input = Writable.toWeb(proc.stdin)
-  const output = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>
+  // Set up ACP connection — manual Web Stream wrappers (Bun's Writable.toWeb crashes on Windows)
+  const input = new WritableStream({
+    write(chunk) { return new Promise<void>((resolve, reject) => { proc.stdin!.write(chunk, (err) => err ? reject(err) : resolve()) }) },
+    close() { proc.stdin!.end() },
+    abort() { proc.stdin!.destroy() },
+  })
+  const output = new ReadableStream<Uint8Array>({
+    start(controller) {
+      proc.stdout!.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
+      proc.stdout!.on('end', () => controller.close())
+      proc.stdout!.on('error', (err) => controller.error(err))
+    },
+  })
   const stream = acp.ndJsonStream(input, output)
   const connection = new acp.ClientSideConnection(() => client, stream)
 
@@ -1235,13 +1245,25 @@ async function enqueueMessage(userId: string, promptBlocks: acp.ContentBlock[], 
     if (userSessions.size >= MAX_CONCURRENT_USERS) {
       evictOldestSession()
     }
-    try {
-      session = await createSession(userId, contextToken)
-    } catch (err) {
-      process.stderr.write(`wechat acp-bridge [${userId}]: session creation failed: ${err}\n`)
+    const MAX_RETRIES = 2
+    let lastErr: unknown
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        session = await createSession(userId, contextToken)
+        break
+      } catch (err) {
+        lastErr = err
+        process.stderr.write(`wechat acp-bridge [${userId}]: session creation failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
+        if (attempt < MAX_RETRIES) {
+          await Bun.sleep(1000 * (attempt + 1)) // 1s, 2s backoff
+          continue
+        }
+      }
+    }
+    if (!session) {
       try {
         await sendMessage(userId,
-          `⚠️ Agent 启动失败: ${err instanceof Error ? err.message : JSON.stringify(err)}\n\n` +
+          `⚠️ Agent 启动失败（重试 ${MAX_RETRIES + 1} 次）: ${lastErr instanceof Error ? lastErr.message : JSON.stringify(lastErr)}\n\n` +
           `常见原因：\n` +
           `1. 未安装 Node.js/npx\n` +
           `2. npx @zed-industries/claude-code-acp 下载超时\n` +
