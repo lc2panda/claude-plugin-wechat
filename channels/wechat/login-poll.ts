@@ -85,7 +85,9 @@ while (Date.now() < deadline) {
     if (err?.name === 'AbortError') {
       resp = { status: 'wait' }
     } else {
-      throw err
+      // Network/gateway errors: degrade to 'wait' and retry (aligned with v2.1.7)
+      console.error(`QR poll network error, will retry: ${String(err)}`)
+      resp = { status: 'wait' }
     }
   }
 
@@ -99,6 +101,22 @@ while (Date.now() < deadline) {
         scannedShown = true
       }
       break
+
+    // IDC redirection: user scanned but needs to switch to regional server (v2.1.7+)
+    case 'scaned_but_redirect': {
+      const redirectHost = resp.redirect_host
+      if (redirectHost) {
+        const newBase = `https://${redirectHost}/`
+        console.error(`IDC redirect: switching to ${newBase}`)
+        // Update base URL for subsequent polls — note: QR fetch stays on fixed URL
+        Object.defineProperty(globalThis, '__redirectedBase', { value: newBase, writable: true })
+      }
+      if (!scannedShown) {
+        console.log('scaned')
+        scannedShown = true
+      }
+      break
+    }
 
     case 'expired': {
       if (refreshCount >= MAX_QR_REFRESHES) {
@@ -120,9 +138,11 @@ while (Date.now() < deadline) {
     }
 
     case 'confirmed': {
+      // Use redirected base URL if IDC redirection occurred, then server-provided baseurl, then original
+      const redirectedBase = (globalThis as any).__redirectedBase
       const creds = {
         token: resp.bot_token,
-        baseUrl: resp.baseurl ?? baseUrl,
+        baseUrl: resp.baseurl ?? redirectedBase ?? baseUrl,
         accountId: resp.ilink_bot_id,
         userId: resp.ilink_user_id,
       }

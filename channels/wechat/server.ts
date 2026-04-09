@@ -148,7 +148,8 @@ function debouncedPersist(): void {
 }
 
 // Map attachment_id → download info for deferred media downloads
-const pendingAttachments = new Map<string, { encryptQueryParam: string; aesKeyBase64: string; filename: string }>()
+// full_url: server-provided direct CDN URL (v2.1.7+), preferred over encryptQueryParam construction
+const pendingAttachments = new Map<string, { encryptQueryParam: string; aesKeyBase64: string; filename: string; fullUrl?: string }>()
 
 // Typing indicator state
 let typingTicket = ''
@@ -183,12 +184,21 @@ function randomWechatUin(): string {
   return Buffer.from(String(uint32), 'utf-8').toString('base64')
 }
 
+// iLink client version header: encode semver as uint32 (major<<16 | minor<<8 | patch)
+// Aligned with @tencent-weixin/openclaw-weixin v2.1.7 api.ts
+const PLUGIN_VERSION = '2.0.0'
+const ILINK_APP_CLIENT_VERSION = String(
+  ((2 & 0xff) << 16) | ((0 & 0xff) << 8) | (0 & 0xff)
+) // "131072"
+
 function buildHeaders(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     'AuthorizationType': 'ilink_bot_token',
     'Authorization': `Bearer ${TOKEN}`,
     'X-WECHAT-UIN': randomWechatUin(),
+    'iLink-App-Id': 'bot',
+    'iLink-App-ClientVersion': ILINK_APP_CLIENT_VERSION,
   }
 }
 
@@ -329,7 +339,7 @@ function stopTypingKeepAlive(): void {
 // 3. AES-128-ECB encrypt and POST to CDN
 // 4. CDN returns x-encrypted-param for download reference
 
-async function uploadMedia(filePath: string, toUserId: string, mediaType: number = 3): Promise<{ downloadParam: string; aesKeyHex: string; fileSize: number; fileSizeCiphertext: number }> {
+async function uploadMedia(filePath: string, toUserId: string, mediaType: number = 3): Promise<{ downloadParam: string; aesKeyHex: string; fileSize: number; fileSizeCiphertext: number; rawFileMd5: string }> {
   const fileData = readFileSync(filePath)
   const aesKey = randomBytes(16)
   const filekey = randomBytes(16).toString('hex')
@@ -349,10 +359,10 @@ async function uploadMedia(filePath: string, toUserId: string, mediaType: number
     base_info: { channel_version: '1.0.0' },
   })
 
-  if (!uploadResp.upload_param) throw new Error('getuploadurl: no upload_param returned')
-
-  // Build CDN upload URL
-  const cdnUploadUrl = `${CDN_BASE}/c2c/upload?encrypted_query_param=${encodeURIComponent(uploadResp.upload_param)}&filekey=${filekey}`
+  // CDN upload URL: prefer server-provided full_url (v2.1.7+), fallback to legacy param construction
+  if (!uploadResp.upload_full_url && !uploadResp.upload_param) throw new Error('getuploadurl: no upload_full_url or upload_param returned')
+  const cdnUploadUrl = uploadResp.upload_full_url
+    ?? `${CDN_BASE}/c2c/upload?encrypted_query_param=${encodeURIComponent(uploadResp.upload_param)}&filekey=${filekey}`
 
   const MAX_CDN_RETRIES = 3
   let downloadParam = ''
@@ -383,6 +393,7 @@ async function uploadMedia(filePath: string, toUserId: string, mediaType: number
     aesKeyHex: aesKey.toString('hex'),
     fileSize: fileData.length,
     fileSizeCiphertext: encrypted.length,
+    rawFileMd5: rawfilemd5,
   }
 }
 
@@ -422,6 +433,7 @@ async function sendMediaMessage(to: string, filePath: string, contextToken: stri
       },
       file_name: filePath.split('/').pop() ?? 'file',
       len: String(upload.fileSize),
+      md5: upload.rawFileMd5, // Required: prevents 0B file on receiver side (openclaw-weixin PR #11)
     }
   }
 
@@ -630,12 +642,12 @@ function extractText(msg: any): string {
         const ref = item.ref_msg.message_item
         const refTitle = item.ref_msg.title ?? ''
         if (ref.text_item?.text) parts.push(`[引用: ${refTitle ? refTitle + ' | ' : ''}${ref.text_item.text}]`)
-        if (ref.type === 2 && ref.image_item?.media?.encrypt_query_param) {
+        if (ref.type === 2 && (ref.image_item?.media?.encrypt_query_param || ref.image_item?.media?.full_url)) {
           const img = ref.image_item
           const aesKeyB64 = img.aeskey ? Buffer.from(img.aeskey, 'hex').toString('base64') : img.media?.aes_key
-          if (aesKeyB64) {
+          if (aesKeyB64 || img.media?.full_url) {
             const id = `ref_img_${Date.now()}_${randomBytes(3).toString('hex')}`
-            pendingAttachments.set(id, { encryptQueryParam: img.media.encrypt_query_param, aesKeyBase64: aesKeyB64, filename: 'ref_image.jpg' })
+            pendingAttachments.set(id, { encryptQueryParam: img.media.encrypt_query_param ?? '', aesKeyBase64: aesKeyB64 ?? '', filename: 'ref_image.jpg', fullUrl: img.media?.full_url })
             parts.push(`(referenced image: attachment_id=${id})`)
           }
         }
@@ -643,10 +655,11 @@ function extractText(msg: any): string {
     } else if (item.type === 2) {
       const img = item.image_item
       const eqp = img?.media?.encrypt_query_param
+      const fullUrl = img?.media?.full_url
       const aesKeyB64 = img ? resolveImageAesKeyBase64(img) : null
-      if (eqp) {
+      if (eqp || fullUrl) {
         const id = `img_${Date.now()}_${randomBytes(3).toString('hex')}`
-        pendingAttachments.set(id, { encryptQueryParam: eqp, aesKeyBase64: aesKeyB64 ?? '', filename: `image.jpg` })
+        pendingAttachments.set(id, { encryptQueryParam: eqp ?? '', aesKeyBase64: aesKeyB64 ?? '', filename: `image.jpg`, fullUrl })
         parts.push(`(image: attachment_id=${id})`)
       } else {
         parts.push('(image)')
@@ -657,10 +670,11 @@ function extractText(msg: any): string {
         parts.push(`(voice transcription: ${v.text})`)
       } else {
         const eqp = v?.media?.encrypt_query_param
+        const fullUrl = v?.media?.full_url
         const aesKeyB64 = v?.media?.aes_key
-        if (eqp) {
+        if (eqp || fullUrl) {
           const id = `voice_${Date.now()}_${randomBytes(3).toString('hex')}`
-          pendingAttachments.set(id, { encryptQueryParam: eqp, aesKeyBase64: aesKeyB64 ?? '', filename: `voice.silk` })
+          pendingAttachments.set(id, { encryptQueryParam: eqp ?? '', aesKeyBase64: aesKeyB64 ?? '', filename: `voice.silk`, fullUrl })
           parts.push(`(voice: attachment_id=${id})`)
         } else {
           parts.push('(voice)')
@@ -669,10 +683,11 @@ function extractText(msg: any): string {
     } else if (item.type === 4) {
       const f = item.file_item
       const eqp = f?.media?.encrypt_query_param
+      const fullUrl = f?.media?.full_url
       const aesKeyB64 = f?.media?.aes_key
-      if (eqp) {
+      if (eqp || fullUrl) {
         const id = `file_${Date.now()}_${randomBytes(3).toString('hex')}`
-        pendingAttachments.set(id, { encryptQueryParam: eqp, aesKeyBase64: aesKeyB64 ?? '', filename: f.file_name ?? 'file' })
+        pendingAttachments.set(id, { encryptQueryParam: eqp ?? '', aesKeyBase64: aesKeyB64 ?? '', filename: f.file_name ?? 'file', fullUrl })
         parts.push(`(file: ${f.file_name ?? 'unknown'}, attachment_id=${id})`)
       } else {
         parts.push(`(file: ${item.file_item?.file_name ?? 'unknown'})`)
@@ -680,10 +695,11 @@ function extractText(msg: any): string {
     } else if (item.type === 5) {
       const v = item.video_item
       const eqp = v?.media?.encrypt_query_param
+      const fullUrl = v?.media?.full_url
       const aesKeyB64 = v?.media?.aes_key
-      if (eqp) {
+      if (eqp || fullUrl) {
         const id = `video_${Date.now()}_${randomBytes(3).toString('hex')}`
-        pendingAttachments.set(id, { encryptQueryParam: eqp, aesKeyBase64: aesKeyB64 ?? '', filename: `video.mp4` })
+        pendingAttachments.set(id, { encryptQueryParam: eqp ?? '', aesKeyBase64: aesKeyB64 ?? '', filename: `video.mp4`, fullUrl })
         parts.push(`(video: attachment_id=${id})`)
       } else {
         parts.push('(video)')
@@ -827,8 +843,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
         mkdirSync(INBOX_DIR, { recursive: true, mode: 0o700 })
 
-        // Build CDN URL: {cdnBase}/c2c/download?encrypted_query_param={eqp}
-        const cdnUrl = `${CDN_BASE}/c2c/download?encrypted_query_param=${encodeURIComponent(info.encryptQueryParam)}`
+        // CDN download URL: prefer server-provided full_url (v2.1.7+), fallback to legacy param construction
+        const cdnUrl = info.fullUrl
+          ?? `${CDN_BASE}/c2c/download?encrypted_query_param=${encodeURIComponent(info.encryptQueryParam)}`
         const res = await fetch(cdnUrl)
         if (!res.ok) throw new Error(`CDN download failed: ${res.status}`)
         const encrypted = Buffer.from(await res.arrayBuffer())

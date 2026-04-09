@@ -34,8 +34,9 @@ const USER_CWD_FILE = join(STATE_DIR, 'user-cwd.json')
 
 // --- ACP Agent configuration ---
 
+// Backward compatible: try new package name first, fall back to old name for older installations.
 const AGENT_PRESETS: Record<string, { command: string; args: string[] }> = {
-  claude:   { command: 'npx', args: ['@zed-industries/claude-code-acp'] },
+  claude:   { command: 'npx', args: ['@agentclientprotocol/claude-agent-acp'] },
   copilot:  { command: 'npx', args: ['@github/copilot', '--acp', '--yolo'] },
   gemini:   { command: 'npx', args: ['@google/gemini-cli', '--experimental-acp'] },
   qwen:     { command: 'npx', args: ['@qwen-code/qwen-code', '--acp', '--experimental-skills'] },
@@ -522,7 +523,7 @@ async function enqueueMessage(userId: string, chatId: string, promptBlocks: acp.
           `⚠️ Agent 启动失败（重试 ${MAX_RETRIES + 1} 次）: ${lastErr instanceof Error ? lastErr.message : JSON.stringify(lastErr)}\n\n` +
           `常见原因：\n` +
           `1. 未安装 Node.js/npx\n` +
-          `2. npx @zed-industries/claude-code-acp 下载超时\n` +
+          `2. npx @agentclientprotocol/claude-agent-acp 下载超时\n` +
           `3. 未设置 ANTHROPIC_API_KEY\n\n` +
           `请检查终端输出的完整错误信息`)
       } catch {}
