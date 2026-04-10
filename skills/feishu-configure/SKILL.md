@@ -1,5 +1,5 @@
 ---
-name: configure
+name: feishu-configure
 description: Set up the Feishu/Lark channel — configure app credentials, check status. Use when the user asks to configure Feishu, set app_id/app_secret, or check channel status.
 user-invocable: true
 allowed-tools:

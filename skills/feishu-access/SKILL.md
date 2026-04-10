@@ -1,5 +1,5 @@
 ---
-name: access
+name: feishu-access
 description: Manage Feishu/Lark channel access — approve pairings, edit allowlists, set DM policy. Use when the user asks to pair, approve someone, check who's allowed, or change policy for the Feishu channel.
 user-invocable: true
 allowed-tools:
