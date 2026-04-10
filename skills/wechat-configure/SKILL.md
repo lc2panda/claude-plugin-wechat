@@ -1,5 +1,5 @@
 ---
-name: configure
+name: wechat-configure
 description: Set up the WeChat channel — scan QR code to login, check channel status. Use when the user asks to configure WeChat, login, or check channel status.
 user-invocable: true
 allowed-tools:

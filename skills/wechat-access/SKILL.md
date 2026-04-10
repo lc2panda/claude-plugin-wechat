@@ -1,5 +1,5 @@
 ---
-name: access
+name: wechat-access
 description: Manage WeChat channel access — approve pairings, edit allowlists, set DM policy. Use when the user asks to pair, approve someone, check who's allowed, or change policy for the WeChat channel.
 user-invocable: true
 allowed-tools:
