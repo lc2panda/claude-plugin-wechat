@@ -5,7 +5,7 @@
  * Pos: MCP Channel server — bridges Feishu/Lark into Claude Code sessions
  *
  * Uses @larksuiteoapi/node-sdk WSClient for message reception (no public IP needed).
- * State lives in ~/.claude/channels/feishu/
+ * State lives in ~/.<pandacc|claude>/channels/feishu/
  */
 
 import { randomBytes } from 'crypto'
@@ -25,8 +25,10 @@ import {
 import { z } from 'zod'
 
 // --- State directories ---
+import { existsSync } from 'fs'
+const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
 
-const STATE_DIR = join(homedir(), '.claude', 'channels', 'feishu')
+const STATE_DIR = join(APP_HOME, 'channels', 'feishu')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const CREDENTIALS_FILE = join(STATE_DIR, 'credentials.json')

@@ -7,11 +7,12 @@
  * Exit code 0 = confirmed, 1 = expired/error.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
-const STATE_DIR = join(homedir(), '.claude', 'channels', 'wechat')
+const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
+const STATE_DIR = join(APP_HOME, 'channels', 'wechat')
 const CREDENTIALS_FILE = join(STATE_DIR, 'credentials.json')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 

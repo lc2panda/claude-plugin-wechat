@@ -5,7 +5,7 @@
  * Pos: Core MCP channel server — bridge between WeChat and Claude Code session
  *
  * Self-contained MCP server with full access control: pairing, allowlists.
- * State lives in ~/.claude/channels/wechat/ — managed by the /wechat:access
+ * State lives in ~/.<pandacc|claude>/channels/wechat/ — managed by the /wechat:access
  * and /wechat:configure skills.
  *
  * Uses WeChat iLink Bot API with HTTP long-poll — no public webhook needed.
@@ -26,11 +26,14 @@ import { homedir } from 'os'
 import { join, sep } from 'path'
 import { z } from 'zod'
 
+// Detect home: prefer .pandacc over .claude
+import { existsSync } from 'fs'
+const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
+
 // Migrate state from old 'weixin' dir to 'wechat' if needed
-const OLD_STATE_DIR = join(homedir(), '.claude', 'channels', 'weixin')
-const STATE_DIR = join(homedir(), '.claude', 'channels', 'wechat')
+const OLD_STATE_DIR = join(APP_HOME, 'channels', 'weixin')
+const STATE_DIR = join(APP_HOME, 'channels', 'wechat')
 try {
-  const { existsSync } = await import('fs')
   if (existsSync(OLD_STATE_DIR) && !existsSync(STATE_DIR)) {
     renameSync(OLD_STATE_DIR, STATE_DIR)
     process.stderr.write('wechat channel: migrated state from channels/weixin to channels/wechat\n')

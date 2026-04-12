@@ -6,7 +6,7 @@
  *
  * Uses Agent Client Protocol (ACP) for persistent agent sessions.
  * Each WeChat user gets a dedicated agent subprocess with session continuity.
- * State lives in ~/.claude/channels/wechat/
+ * State lives in ~/.<pandacc|claude>/channels/wechat/
  */
 
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
@@ -23,11 +23,14 @@ import * as acp from '@agentclientprotocol/sdk'
 
 // --- State directories ---
 
+// Detect home: prefer .pandacc over .claude
+import { existsSync } from 'fs'
+const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
+
 // Migrate state from old 'weixin' dir to 'wechat' if needed
-const OLD_STATE_DIR = join(homedir(), '.claude', 'channels', 'weixin')
-const STATE_DIR = join(homedir(), '.claude', 'channels', 'wechat')
+const OLD_STATE_DIR = join(APP_HOME, 'channels', 'weixin')
+const STATE_DIR = join(APP_HOME, 'channels', 'wechat')
 try {
-  const { existsSync } = await import('fs')
   if (existsSync(OLD_STATE_DIR) && !existsSync(STATE_DIR)) {
     renameSync(OLD_STATE_DIR, STATE_DIR)
     process.stderr.write('wechat acp-bridge: migrated state from channels/weixin to channels/wechat\n')

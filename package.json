@@ -9,10 +9,11 @@
     "feishu-acp": "./channels/feishu/acp-bridge.ts"
   },
   "scripts": {
-    "start:wechat": "bun install --no-summary && bun channels/wechat/server.ts",
-    "start:wechat:acp": "bun install --no-summary && bun channels/wechat/acp-bridge.ts",
-    "start:feishu": "bun install --no-summary && bun channels/feishu/server.ts",
-    "start:feishu:acp": "bun install --no-summary && bun channels/feishu/acp-bridge.ts"
+    "postinstall": "bun install --no-summary",
+    "start:wechat": "bun channels/wechat/server.ts",
+    "start:wechat:acp": "bun channels/wechat/acp-bridge.ts",
+    "start:feishu": "bun channels/feishu/server.ts",
+    "start:feishu:acp": "bun channels/feishu/acp-bridge.ts"
   },
   "keywords": ["wechat", "weixin", "feishu", "lark", "claude", "claude-code", "mcp", "acp", "chatbot", "ai"],
   "repository": {
