@@ -37,22 +37,17 @@ const USER_CWD_FILE = join(STATE_DIR, 'user-cwd.json')
 
 // --- ACP Agent configuration ---
 
-// Backward compatible: try new package name first, fall back to old name for older installations.
-const AGENT_PRESETS: Record<string, { command: string; args: string[] }> = {
-  claude:   { command: 'npx', args: ['@agentclientprotocol/claude-agent-acp'] },
-  copilot:  { command: 'npx', args: ['@github/copilot', '--acp', '--yolo'] },
-  gemini:   { command: 'npx', args: ['@google/gemini-cli', '--experimental-acp'] },
-  qwen:     { command: 'npx', args: ['@qwen-code/qwen-code', '--acp', '--experimental-skills'] },
-  codex:    { command: 'npx', args: ['@zed-industries/codex-acp'] },
-  opencode: { command: 'npx', args: ['opencode-ai', 'acp'] },
-}
+// Backward compatible: import shared ACP package resolution
+import { AGENT_PRESETS, resolveClaudeAcpArgs, getAcpInstallHint } from '../shared/acp-packages.js'
 
 const agentName = process.env.ACP_AGENT ?? 'claude'
 const preset = AGENT_PRESETS[agentName]
-const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? preset?.command ?? agentName
+// For Claude agent, use backward-compatible resolution (env vars → legacy flag → new pkg → fallback)
+const resolvedClaude = agentName === 'claude' ? resolveClaudeAcpArgs() : null
+const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? (resolvedClaude?.command ?? preset?.command ?? agentName)
 const AGENT_ARGS = process.env.ACP_AGENT_ARGS
   ? process.env.ACP_AGENT_ARGS.split(' ').filter(Boolean)
-  : preset?.args ?? []
+  : (resolvedClaude?.args ?? preset?.args ?? [])
 
 // Parse CLI arguments
 const cliArgs = process.argv.slice(2)
@@ -408,7 +403,7 @@ async function createSession(userId: string, chatId: string): Promise<UserSessio
   // Wait briefly to detect immediate crash (e.g. missing API key, bad binary)
   await new Promise(resolve => setTimeout(resolve, 500))
   if (proc.exitCode !== null) {
-    throw new Error(`Agent process exited immediately (code ${proc.exitCode}). Check that ANTHROPIC_API_KEY is set and the agent command is valid.`)
+    throw new Error(`Agent process exited immediately (code ${proc.exitCode}). Check that ANTHROPIC_API_KEY is set and the agent command is valid.\n\n${getAcpInstallHint()}`)
   }
 
   // Manual Web Stream wrappers (Bun's Writable.toWeb crashes on Windows — Issue #16087)
@@ -526,9 +521,9 @@ async function enqueueMessage(userId: string, chatId: string, promptBlocks: acp.
           `⚠️ Agent 启动失败（重试 ${MAX_RETRIES + 1} 次）: ${lastErr instanceof Error ? lastErr.message : JSON.stringify(lastErr)}\n\n` +
           `常见原因：\n` +
           `1. 未安装 Node.js/npx\n` +
-          `2. npx @agentclientprotocol/claude-agent-acp 下载超时\n` +
+          `2. npx ACP agent 下载超时\n` +
           `3. 未设置 ANTHROPIC_API_KEY\n\n` +
-          `请检查终端输出的完整错误信息`)
+          getAcpInstallHint())
       } catch {}
       return
     }
