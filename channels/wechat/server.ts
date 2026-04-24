@@ -188,11 +188,11 @@ function randomWechatUin(): string {
 }
 
 // iLink client version header: encode semver as uint32 (major<<16 | minor<<8 | patch)
-// Aligned with @tencent-weixin/openclaw-weixin v2.1.7 api.ts
-const PLUGIN_VERSION = '2.0.0'
+// Aligned with @tencent-weixin/openclaw-weixin v2.1.9 api.ts
+const PLUGIN_VERSION = '2.1.9'
 const ILINK_APP_CLIENT_VERSION = String(
-  ((2 & 0xff) << 16) | ((0 & 0xff) << 8) | (0 & 0xff)
-) // "131072"
+  ((2 & 0xff) << 16) | ((1 & 0xff) << 8) | (9 & 0xff)
+) // "131081"
 
 function buildHeaders(): Record<string, string> {
   return {
@@ -242,6 +242,10 @@ async function getUpdates(buf: string, timeoutMs = 35000): Promise<any> {
 }
 
 async function sendMessage(to: string, text: string, contextToken: string): Promise<void> {
+  // Note: from_user_id='', client_id, message_type=2(BOT), message_state=2(FINISH) are
+  // extra fields beyond the minimal sendmessage spec. They mirror WeixinMessage struct
+  // fields and follow @tencent-weixin/openclaw-weixin v2.1.9 internal implementation.
+  // Removing them may break compatibility with the iLink backend.
   const sendResp = await apiFetch('ilink/bot/sendmessage', {
     msg: {
       from_user_id: '',
@@ -261,13 +265,15 @@ async function sendMessage(to: string, text: string, contextToken: string): Prom
 
 // --- Typing indicator ---
 
-async function refreshTypingTicket(): Promise<string> {
+async function refreshTypingTicket(contextToken?: string): Promise<string> {
   if (typingTicket && Date.now() < typingTicketExpiry) return typingTicket
   try {
-    const resp = await apiFetch('ilink/bot/getconfig', {
+    const body: any = {
       ilink_user_id: creds.userId ?? '',
       base_info: { channel_version: '1.0.0' },
-    })
+    }
+    if (contextToken) body.context_token = contextToken
+    const resp = await apiFetch('ilink/bot/getconfig', body)
     if (resp.typing_ticket) {
       typingTicket = resp.typing_ticket
       typingTicketExpiry = Date.now() + 30 * 60 * 1000
@@ -279,7 +285,7 @@ async function refreshTypingTicket(): Promise<string> {
 }
 
 async function sendTyping(toUserId: string, contextToken: string): Promise<void> {
-  const ticket = await refreshTypingTicket()
+  const ticket = await refreshTypingTicket(contextToken)
   if (!ticket) return
   try {
     await apiFetch('ilink/bot/sendtyping', {
@@ -350,17 +356,27 @@ async function uploadMedia(filePath: string, toUserId: string, mediaType: number
   const rawfilemd5 = createHash('md5').update(fileData).digest('hex')
   const encrypted = encryptAesEcb(fileData, aesKey)
 
-  const uploadResp = await apiFetch('ilink/bot/getuploadurl', {
+  const body: Record<string, any> = {
     filekey,
     media_type: mediaType, // 1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE
     to_user_id: toUserId,
     rawsize: fileData.length,
     rawfilemd5,
     filesize: encrypted.length,
-    no_need_thumb: true,
     aeskey: aesKey.toString('hex'),
     base_info: { channel_version: '1.0.0' },
-  })
+  }
+
+  // IMAGE (1) and VIDEO (2) types require thumbnail params per v2.1.9 API spec.
+  // We pass zero-value thumb params; the server can generate its own thumbnail.
+  if (mediaType === 1 || mediaType === 2) {
+    body.thumb_rawsize = 0
+    body.thumb_rawfilemd5 = ''
+    body.thumb_filesize = 0
+  }
+  // FILE (3) — no thumb params needed
+
+  const uploadResp = await apiFetch('ilink/bot/getuploadurl', body)
 
   // CDN upload URL: prefer server-provided full_url (v2.1.7+), fallback to legacy param construction
   if (!uploadResp.upload_full_url && !uploadResp.upload_param) throw new Error('getuploadurl: no upload_full_url or upload_param returned')
@@ -440,7 +456,9 @@ async function sendMediaMessage(to: string, filePath: string, contextToken: stri
     }
   }
 
-  await apiFetch('ilink/bot/sendmessage', {
+  // Note: from_user_id='', client_id, message_type=2(BOT), message_state=2(FINISH)
+  // mirror WeixinMessage struct fields per @tencent-weixin/openclaw-weixin v2.1.9.
+  const sendResp = await apiFetch('ilink/bot/sendmessage', {
     msg: {
       from_user_id: '',
       to_user_id: to,
@@ -452,6 +470,9 @@ async function sendMediaMessage(to: string, filePath: string, contextToken: stri
     },
     base_info: { channel_version: '1.0.0' },
   })
+  if (sendResp?.ret === -14 || sendResp?.errcode === -14) {
+    throw new Error('session expired — re-login via /wechat:configure login')
+  }
 }
 
 // --- Security ---
