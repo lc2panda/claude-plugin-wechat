@@ -48,24 +48,17 @@ const DEBUG_MODE_FILE = join(STATE_DIR, 'debug-mode.json')
 
 // --- ACP Agent configuration ---
 
-// Built-in agent presets (matching wechat-acp convention)
-// Claude Code CLI does NOT natively speak ACP — it needs the claude-agent-acp wrapper.
-// Backward compatible: try new package name first, fall back to old name for older installations.
-const AGENT_PRESETS: Record<string, { command: string; args: string[] }> = {
-  claude:   { command: 'npx', args: ['@agentclientprotocol/claude-agent-acp'] },
-  copilot:  { command: 'npx', args: ['@github/copilot', '--acp', '--yolo'] },
-  gemini:   { command: 'npx', args: ['@google/gemini-cli', '--experimental-acp'] },
-  qwen:     { command: 'npx', args: ['@qwen-code/qwen-code', '--acp', '--experimental-skills'] },
-  codex:    { command: 'npx', args: ['@zed-industries/codex-acp'] },
-  opencode: { command: 'npx', args: ['opencode-ai', 'acp'] },
-}
+// ACP agent presets and Claude package resolution — shared with feishu bridge
+import { AGENT_PRESETS, resolveClaudeAcpArgs } from '../shared/acp-packages.js'
 
 const agentName = process.env.ACP_AGENT ?? 'claude'
 const preset = AGENT_PRESETS[agentName]
-const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? preset?.command ?? agentName
+// For Claude agent, use backward-compatible resolution (supports ACP_USE_LEGACY=1)
+const resolvedClaude = agentName === 'claude' ? resolveClaudeAcpArgs() : null
+const AGENT_COMMAND = process.env.ACP_AGENT_COMMAND ?? (resolvedClaude?.command ?? preset?.command ?? agentName)
 const AGENT_ARGS = process.env.ACP_AGENT_ARGS
   ? process.env.ACP_AGENT_ARGS.split(' ').filter(Boolean)
-  : preset?.args ?? []
+  : (resolvedClaude?.args ?? preset?.args ?? [])
 
 // Parse CLI arguments
 const cliArgs = process.argv.slice(2)
@@ -1132,9 +1125,11 @@ async function createSession(userId: string, contextToken: string): Promise<User
     log: (msg) => process.stderr.write(`wechat acp-bridge [${userId}]: ${msg}\n`),
   })
 
-  // Spawn agent subprocess
+  // Spawn agent subprocess (Claude uses shared backward-compatible resolution)
   const useShell = process.platform === 'win32'
-  const proc = spawn(AGENT_COMMAND, AGENT_ARGS, {
+  const spawnCmd = agentName === 'claude' ? resolvedClaude!.command : AGENT_COMMAND
+  const spawnArgs = agentName === 'claude' ? resolvedClaude!.args : AGENT_ARGS
+  const proc = spawn(spawnCmd, spawnArgs, {
     stdio: ['pipe', 'pipe', 'inherit'],
     cwd: getUserCwd(userId),
     env: { ...process.env, ...AGENT_ENV },
@@ -1337,7 +1332,7 @@ async function enqueueMessage(userId: string, promptBlocks: acp.ContentBlock[], 
           `⚠️ Agent 启动失败（重试 ${MAX_RETRIES + 1} 次）: ${lastErr instanceof Error ? lastErr.message : JSON.stringify(lastErr)}\n\n` +
           `常见原因：\n` +
           `1. 未安装 Node.js/npx\n` +
-          `2. npx @agentclientprotocol/claude-agent-acp 下载超时\n` +
+          `2. npx @agentclientprotocol/claude-agent-acp 下载超时（可设 ACP_USE_LEGACY=1 用旧包 @zed-industries/claude-code-acp）\n` +
           `3. 未设置 ANTHROPIC_API_KEY`,
           contextToken)
       } catch {}
