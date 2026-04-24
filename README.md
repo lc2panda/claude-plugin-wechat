@@ -33,7 +33,7 @@
 <details>
 <summary><b>Channel 模式</b>（claude.ai 用户）</summary>
 
-> 前置：[Claude Code](https://claude.ai/claude-code) **v2.1.80+**，claude.ai 登录
+> 前置：[Claude Code](https://claude.ai/claude-code) **v2.1.111+**，claude.ai 登录
 > 检查：`claude --version`，低于请 `claude update`
 
 | 步骤 | 操作 | 在哪 |
@@ -163,11 +163,11 @@
 ### 第 0 步 · 环境检测
 
 ```bash
-claude --version   # >= 2.1.80
+claude --version   # >= 2.1.111
 bun --version      # 必须
 ```
 
-低于 2.1.80：告诉用户 `claude update`
+低于 2.1.111：告诉用户 `claude update`
 无 Bun：告诉用户 `curl -fsSL https://bun.sh/install | bash`
 
 **询问用户：**
