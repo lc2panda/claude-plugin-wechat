@@ -119,14 +119,14 @@ update `baseUrl`, write back.
 
 ## FAQ
 
-**Q: 我派出的 sub-agent / worker 报错 "cannot send to WeChat" / "session timeout" / "errcode -14"，第二次主会话直接发就成功，怎么回事？**
+**Q: 通过 Task 工具派出的 sub-agent 调用 reply 时报错 "cannot send to WeChat" 或 "session timeout"，但主会话直接发就成功，为什么？**
 
-A: 这是 MCP 协议的物理限制，不是 bug。Sub-agent（Task 工具派出的 worker）运行在隔离上下文中，**没有 MCP 句柄**，无法直接调用 `reply` 工具。Worker 拿到的 `context_token` 也只是任务派发时刻的字符串字面量，几分钟后已过期。
+A: 这是 MCP 协议的物理限制，不是 bug。Sub-agent 运行在独立的隔离上下文中，没有 MCP 传输句柄，无法直接调用 `reply` 工具。即使 sub-agent 拿到了 `context_token`，那也是任务派发时刻的字符串字面量，工作几分钟后已经过期。
 
-**正确做法**：让 sub-agent 把要发送的内容作为返回值交给主会话，主会话调用 `reply` 工具。
+**正确做法**：让 sub-agent 把要发送的内容作为返回值交还给主会话，由主会话调用 `reply` 工具。这样可以避免一次失败重试，节省 token 与时间。
 
-**新版插件已加固**（v2.1.3+）：`reply` 工具的 `context_token` 改为可选——主会话不传也能发，服务端自动 fallback 到该 user_id 的最新缓存 token（与腾讯官方 SDK `@tencent-weixin/openclaw-weixin` v2.1.10 同款行为）。
+新版插件（v2.1.3+）的 `reply` 工具已将 `context_token` 改为可选：主会话不传也能发送，服务端会自动取该用户最新缓存的 token。仅当用户从未发过消息（缓存为空）时才会要求"先让用户发一条 WeChat 消息"。
 
-**Q: 为什么不能直接在 sub-agent 里调用 iLink HTTP API？**
+**Q: 为什么不能直接在 sub-agent 里向 iLink HTTP API 发送消息？**
 
-A: 即使 sub-agent 直接 POST 到 `https://ilinkai.weixin.qq.com/ilink/bot/sendmessage`，也需要 `context_token`，而它手上的 token 在派发时刻就已经是旧的——iLink 协议是 last-wins 模型，只有最新一条入站消息的 token 才有效。这就是 B 组日志中第一次失败的真实根因。
+A: 即使 sub-agent 直接 POST 到 iLink 后端的 `sendmessage` 端点，也需要有效的 `context_token`。该协议采用 last-wins 模型——服务端按用户缓存最新一个 token，旧 token 在用户发新消息后就不再保证可用。Sub-agent 手上的 token 来自任务派发时刻，几分钟后通常已不是最新。统一由主会话发送可以彻底规避这一时序问题。
