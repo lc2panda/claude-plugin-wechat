@@ -114,3 +114,19 @@ update `baseUrl`, write back.
 - Default API base URL is `https://ilinkai.weixin.qq.com/`.
 - The QR code URL is a WeChat mini-program link. It works when scanned with
   WeChat's QR scanner OR when opened in WeChat's built-in browser.
+
+---
+
+## FAQ
+
+**Q: 我派出的 sub-agent / worker 报错 "cannot send to WeChat" / "session timeout" / "errcode -14"，第二次主会话直接发就成功，怎么回事？**
+
+A: 这是 MCP 协议的物理限制，不是 bug。Sub-agent（Task 工具派出的 worker）运行在隔离上下文中，**没有 MCP 句柄**，无法直接调用 `reply` 工具。Worker 拿到的 `context_token` 也只是任务派发时刻的字符串字面量，几分钟后已过期。
+
+**正确做法**：让 sub-agent 把要发送的内容作为返回值交给主会话，主会话调用 `reply` 工具。
+
+**新版插件已加固**（v2.1.3+）：`reply` 工具的 `context_token` 改为可选——主会话不传也能发，服务端自动 fallback 到该 user_id 的最新缓存 token（与腾讯官方 SDK `@tencent-weixin/openclaw-weixin` v2.1.10 同款行为）。
+
+**Q: 为什么不能直接在 sub-agent 里调用 iLink HTTP API？**
+
+A: 即使 sub-agent 直接 POST 到 `https://ilinkai.weixin.qq.com/ilink/bot/sendmessage`，也需要 `context_token`，而它手上的 token 在派发时刻就已经是旧的——iLink 协议是 last-wins 模型，只有最新一条入站消息的 token 才有效。这就是 B 组日志中第一次失败的真实根因。
