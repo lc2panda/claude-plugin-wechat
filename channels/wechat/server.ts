@@ -754,7 +754,7 @@ const mcp = new Server(
     instructions: [
       'The sender reads WeChat (微信), not this session. Anything you want them to see must go through the reply tool — your transcript output never reaches their chat.',
       '',
-      'Messages from WeChat arrive as <channel source="wechat" user_id="..." context_token="..." ts="...">. Reply with the reply tool — pass user_id back. context_token is now optional; if omitted, the server falls back to the latest cached token for this user_id (last-wins per-user cache, mirrors @tencent-weixin/openclaw-weixin v2.1.10).',
+      'Messages from WeChat arrive as <channel source="wechat" user_id="..." context_token="..." ts="...">. Reply with the reply tool — pass user_id back. context_token is optional: if omitted, the server uses the most recent token cached for this user.',
       '',
       'Media messages (images, files, voice, video) arrive with attachment_id in the text. Use the download_attachment tool to download them to a local path when needed.',
       '',
@@ -776,7 +776,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'reply',
       description:
-        'Reply on WeChat. Pass user_id from the inbound message. context_token is optional — if omitted, the server falls back to the latest cached token for this user (mirrors @tencent-weixin/openclaw-weixin v2.1.10 OutboundAdapter behavior).',
+        'Reply on WeChat. Pass user_id from the inbound message. context_token is optional — if omitted, the server uses the most recent token cached for this user.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -784,7 +784,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
           text: { type: 'string' },
           context_token: {
             type: 'string',
-            description: 'Optional. context_token from the inbound message. If omitted, the server uses the latest cached token for user_id. Pass explicitly only if you have a fresher token from a more recent inbound message.',
+            description: 'Optional. If omitted, the server uses the most recent token cached for user_id. Pass it only when you have a fresher token from a more recent inbound message.',
           },
           files: {
             type: 'array',
