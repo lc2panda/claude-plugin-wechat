@@ -16,11 +16,13 @@
     "lark",
     "codex",
     "acp",
+    "mcp",
     "messaging",
     "channel",
     "ai"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "WeChat & Feishu/Lark",
     "shortDescription": "Chat with AI via WeChat or Feishu",

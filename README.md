@@ -26,13 +26,17 @@ which bun || echo "需要 Bun: curl -fsSL https://bun.sh/install | bash"
 
 ## `.mcp.json` 平台差异说明
 
-项目根目录 `.mcp.json` **仅供 Claude Code 使用**——Claude Code 读取该文件自动启动 wechat/feishu MCP 服务器。
+`.mcp.json` 同时服务于 Codex 和 Claude Code 两个平台：
 
-**Codex 不读取 `.mcp.json`**，而是通过自有插件机制自动加载渠道 MCP 服务器。插件安装并重启 Codex 会话后，MCP 服务器自动注册，无需手动配置。
+- **Claude Code**：读取项目根目录 `.mcp.json`，通过 `${CLAUDE_PLUGIN_ROOT}` 定位插件目录启动 MCP。
+- **Codex**：通过 `.codex-plugin/plugin.json` 中的 `mcpServers` 字段发现 `.mcp.json`。`${CLAUDE_PLUGIN_ROOT:-.}` 的 shell 兜底语法确保 Codex（无此变量时回退到当前目录）也能正确解析插件路径。
+
+插件安装并重启 Codex 会话后，MCP 服务器自动注册，无需手动配置。
 
 如果 Codex 渠道未自动启动，排查：
 - 是否已**重启 Codex 会话**（插件安装/更新后必须重启，否则新技能/MCP 不生效）
 - `~/.pandacc/channels/wechat/credentials.json` 或 `~/.pandacc/channels/feishu/credentials.json` 是否存在
+- 插件 `plugin.json` 中是否包含 `"mcpServers": "./.mcp.json"` 字段（v2.1.5+）
 
 ---
 
@@ -74,7 +78,7 @@ which bun || echo "需要 Bun: curl -fsSL https://bun.sh/install | bash"
 ### 启动 [需人类操作]
 
 - **Claude Code**: `claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins`
-- **Codex**: 插件安装后 Codex 自动加载渠道，无需额外启动参数。通知用户重启 Codex 会话。
+- **Codex**: 插件安装后 Codex 通过 `plugin.json` 的 `mcpServers` 字段自动发现并启动 MCP 渠道服务器，无需额外启动参数。通知用户重启 Codex 会话。
 
 ### 验证
 
@@ -315,7 +319,7 @@ wechat-acp --cwd /项目路径          # 指定工作目录
 | 步骤 | 操作 | 在哪 |
 |------|------|------|
 | 1 安装 | `/plugin marketplace add lc2panda/claude-plugin-wechat` 然后 `/plugin install wechat@lc2panda-plugins` | Codex |
-| 2 登录 | `/wechat:configure login` → 微信扫码 → 手机确认 | Codex |
+| 2 登录 | 告诉 Codex 「配置微信登录」 → 显示二维码 → 微信扫码 → 手机确认 | Codex |
 | 3 启动 | 插件安装后自动加载渠道，**重启 Codex 会话**即可 | — |
 | 4 使用 | 扫码的微信号自动授权，直接发消息 | 微信 |
 
@@ -410,7 +414,7 @@ wechat-acp --cwd /项目路径          # 指定工作目录
 | 步骤 | 操作 | 在哪 |
 |------|------|------|
 | 5 安装 | `/plugin marketplace add lc2panda/claude-plugin-wechat` 然后 `/plugin install wechat@lc2panda-plugins` | Codex |
-| 6 凭据 | `/feishu:configure login` → 输入 App ID + App Secret | Codex |
+| 6 凭据 | 告诉 Codex 「配置飞书」 → 按提示输入 App ID 和 App Secret | Codex |
 | 7 启动 | 插件安装后自动加载渠道，**重启 Codex 会话**即可 | — |
 | 8 使用 | 私聊机器人或群聊 @机器人 | 飞书 |
 
@@ -422,7 +426,7 @@ wechat-acp --cwd /项目路径          # 指定工作目录
 | 步骤 | 操作 | 在哪 |
 |------|------|------|
 | 5 安装 | `bun add -g github:lc2panda/claude-plugin-wechat` | 系统终端 |
-| 6 凭据 | `/feishu:configure login` → 输入 App ID + App Secret | Codex |
+| 6 凭据 | 告诉 Codex 「配置飞书」 → 按提示输入 App ID 和 App Secret | Codex |
 | 7 启动 | `ACP_AGENT=codex feishu-acp` | 系统终端 |
 | 8 使用 | 私聊机器人或群聊 @机器人，`/cwd` 切换目录 | 飞书 |
 
