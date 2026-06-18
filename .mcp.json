@@ -1,3 +1,4 @@
+// MCP servers for Claude Code (auto-started on plugin load). Codex uses its own MCP server configuration.
 {
   "mcpServers": {
     "wechat": {

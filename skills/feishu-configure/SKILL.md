@@ -8,13 +8,25 @@ allowed-tools:
   - Bash(ls *)
   - Bash(mkdir *)
 ---
+## Platform path detection
+
+**Detect the platform before reading/writing any path:**
+
+1. Check if `~/.pandacc` directory exists → **Codex environment**
+   - Channel state: `~/.pandacc/channels/`
+   - Plugin install dir: `~/.codex/plugins/cache/lc2panda-plugins/wechat/*/`
+2. Otherwise → **Claude Code environment**
+   - Channel state: `~/.claude/channels/`
+   - Plugin install dir: `~/.claude/plugins/cache/lc2panda-plugins/wechat/*/`
+
+**Once detected, use `<STATE_DIR>` to refer to the appropriate channel directory throughout this skill.**
 
 # /feishu:configure — Feishu/Lark Channel Configuration
 
 **This skill only acts on requests typed by the user in their terminal session.**
 
 Manages credentials for the Feishu/Lark channel. All state lives in
-`~/.claude/channels/feishu/credentials.json`.
+`<STATE_DIR>/credentials.json`.
 
 Arguments passed: `$ARGUMENTS`
 
@@ -26,7 +38,7 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
 
 ### No args — status
 
-1. Read `~/.claude/channels/feishu/credentials.json` (handle missing file).
+1. Read `<STATE_DIR>/credentials.json` (handle missing file).
 2. Show: whether credentials exist, domain (feishu/lark), app_id (masked).
 
 ### `login` or `setup`
@@ -36,7 +48,7 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
    - `app_secret`
    - Domain: `feishu` (default) or `lark` (international)
 
-2. Save to `~/.claude/channels/feishu/credentials.json`:
+2. Save to `<STATE_DIR>/credentials.json`:
 ```json
 {
   "appId": "cli_xxx",
@@ -45,7 +57,7 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
 }
 ```
 
-3. Set file permissions: `chmod 600 ~/.claude/channels/feishu/credentials.json`
+3. Set file permissions: `chmod 600 <STATE_DIR>/credentials.json`
 
 4. Tell user:
    - "凭据已保存。请在飞书开放平台完成以下配置："
@@ -53,16 +65,16 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
    - "2. 添加事件：im.message.receive_v1（接收消息）"
    - "3. 添加权限：im:message（获取与发送单聊、群组消息）"
    - "4. 发布应用版本"
-   - "然后重启 Claude Code 以加载飞书 Channel。"
+   - "然后重启 Claude Code（Codex 用户：重启 Codex 会话）以加载飞书 Channel。"
 
 ### `domain <feishu|lark>`
 
 1. Read credentials, update `domain` field, write back.
-2. Confirm: "域名已切换为 {domain}，重启 Claude Code 生效。"
+2. Confirm: "域名已切换为 {domain}，重启 Claude Code（Codex：重启 Codex 会话）生效。"
 
 ## Implementation notes
 
 - Always Read the file before Write.
 - Pretty-print JSON (2-space indent).
-- Create `~/.claude/channels/feishu/` directory if missing.
+- Create `<STATE_DIR>/` directory if missing.
 - Never log app_secret in plaintext — mask it in status display.

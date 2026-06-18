@@ -9,11 +9,23 @@ allowed-tools:
   - Bash(mkdir *)
   - Bash(bun *)
 ---
+## Platform path detection
+
+**Detect the platform before reading/writing any path:**
+
+1. Check if `~/.pandacc` directory exists → **Codex environment**
+   - Channel state: `~/.pandacc/channels/`
+   - Plugin install dir: `~/.codex/plugins/cache/lc2panda-plugins/wechat/*/`
+2. Otherwise → **Claude Code environment**
+   - Channel state: `~/.claude/channels/`
+   - Plugin install dir: `~/.claude/plugins/cache/lc2panda-plugins/wechat/*/`
+
+**Once detected, use `<STATE_DIR>` to refer to the appropriate channel directory throughout this skill.**
 
 # /wechat:configure — WeChat Channel Setup
 
 Manages WeChat iLink Bot login and credential storage. Credentials live in
-`~/.claude/channels/wechat/credentials.json`.
+`<STATE_DIR>/credentials.json`.
 
 Arguments passed: `$ARGUMENTS`
 
@@ -25,11 +37,11 @@ Arguments passed: `$ARGUMENTS`
 
 Read both state files and give the user a complete picture:
 
-1. **Credentials** — check `~/.claude/channels/wechat/credentials.json` for
+1. **Credentials** — check `<STATE_DIR>/credentials.json` for
    `token` and `baseUrl`. Show set/not-set; if set, show token first 6 chars
    masked.
 
-2. **Access** — read `~/.claude/channels/wechat/access.json` (missing file
+2. **Access** — read `<STATE_DIR>/access.json` (missing file
    = defaults: `dmPolicy: "pairing"`, empty allowlist). Show:
    - DM policy and what it means
    - Allowed senders: count and list
@@ -46,7 +58,7 @@ This is a TWO-STEP process. The scripts are in the plugin install directory.
 Find the plugin root by looking for the `channels/wechat/login-qr.ts` file:
 
 ```
-~/.claude/plugins/cache/lc2panda-plugins/wechat/*/channels/wechat/login-qr.ts
+<PLUGIN_DIR>/lc2panda-plugins/wechat/*/channels/wechat/login-qr.ts
 ```
 
 Use `ls` to resolve the wildcard and get the actual path.
@@ -87,14 +99,14 @@ This script polls the WeChat API for scan status. It outputs one line:
 On success, tell the user:
 - *"✅ 微信连接成功！"*
 - Credentials saved, user added to allowlist
-- *"重启 Claude Code 会话以启用微信频道"*
+- *"重启 Claude Code（Codex 用户：重启 Codex 会话）以启用微信频道"*
 
 On `scaned`, tell the user *"已扫码，请在微信上点击确认..."* and note
 the poll script is still running.
 
 ### `clear` — remove credentials
 
-Delete `~/.claude/channels/wechat/credentials.json`.
+Delete `<STATE_DIR>/credentials.json`.
 
 ### `baseurl <url>` — set custom API base URL
 

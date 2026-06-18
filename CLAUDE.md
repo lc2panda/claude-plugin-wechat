@@ -97,6 +97,21 @@
 
 ---
 
+### 第八次校验（会话激活 + AGENTS.md 指令接收确认）
+
+| 项目 | 值 |
+|------|-----|
+| 校验发起 | 2026-06-18 10:35:28 +08:00 |
+| 校验完成 | 2026-06-18 10:35:44 +08:00 |
+| 本机系统时间 | 2026-06-18 10:35:31 +08:00 (Asia/Shanghai, +08:00) |
+| 时间源 1 | Cloudflare HTTPS Date Header → `Thu, 18 Jun 2026 02:35:44 GMT` = 10:35:44 +08:00 |
+| 时间源 2 | GitHub HTTPS Date Header → `Thu, 18 Jun 2026 02:35:34 GMT` = 10:35:34 +08:00 |
+| 最大偏差 | 13 秒（System vs Cloudflare，阈值 100 秒） |
+| **判定** | **通过 ✓** |
+| 备注 | 沙箱内 HTTP 被完全阻断，经提权后获取网络时间源；前次校验（第七次）距今约 18 分钟 |
+
+---
+
 ## 1. 项目概览
 
 **项目名称**：claude-channel-wechat（微信频道插件）
@@ -2153,3 +2168,35 @@ const proc = spawn(cmd, args, {
 | `.gitignore` | 修改 | 添加 `.DS_Store` |
 | `README.md` | 修改 | 副标题更新为 "Claude Code / Codex" |
 | `CLAUDE.md` | 修改 | 新增第七次校验记录、证据清单、特例登记 |
+| `skills/wechat-configure/SKILL.md` | 修改 | 新增平台路径检测指引，`~/.claude` → `<STATE_DIR>` + `<PLUGIN_DIR>` 变量化 |
+| `skills/wechat-access/SKILL.md` | 修改 | 同上 |
+| `skills/feishu-configure/SKILL.md` | 修改 | 同上 |
+| `skills/feishu-access/SKILL.md` | 修改 | 同上 |
+| `README.md` | 修改 | 重构：AI 安装指令用 HTML 注释藏文件开头，人类段新增 Codex 安装流程 |
+| `.mcp.json` | 还原 | 修复被误替换的 `${CLAUDE_PLUGIN_ROOT}` 变量（还原为可移植格式） |
+
+### 14.6 Codex 技能路径适配 + README 重构（第八次校验）
+
+> **执行时间**：2026-06-18 10:35:44 +08:00（第八次校验通过）
+> **执行人**：香草少校
+
+**背景**：上一轮（第七次）完成了 Codex 插件清单和市场文件的新增，但技能文件（skills/）中仍硬编码 `~/.claude/` 路径。Codex 使用 `~/.pandacc/` 作为主目录，导致技能指令与实际路径不匹配。
+
+**修复策略**：
+1. 每个技能文件头部新增「Platform path detection」段，指导 AI 先检测平台再确定路径
+2. 所有 `~/.claude/channels/` 替换为 `<STATE_DIR>/` 变量
+3. 微信技能中的 `~/.claude/plugins/cache/` 替换为 `<PLUGIN_DIR>/` 变量
+
+**README 重构**：
+- AI 安装指令段（含完整安装流程、协议参考、故障排查）用 `<!-- -->` HTML 注释包裹，置于文件最开头
+- GitHub 渲染时人类不可见，AI 可解析
+- 人类段新增 Codex · 微信 / Codex · 飞书的 Channel 和 ACP 安装流程
+
+**修复文件**：
+- `skills/wechat-configure/SKILL.md` — 8 处路径变量化
+- `skills/wechat-access/SKILL.md` — 7 处路径变量化
+- `skills/feishu-configure/SKILL.md` — 5 处路径变量化
+- `skills/feishu-access/SKILL.md` — 5 处路径变量化
+- `README.md` — 完全重构
+- `.mcp.json` — 还原被误改的硬编码路径
+
