@@ -36,6 +36,9 @@ const RAW_MODE = process.argv.includes('--raw')
 // Detect home: prefer .pandacc over .claude
 import { existsSync } from 'fs'
 const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
+const IS_CODEX = APP_HOME.endsWith('.pandacc')
+const CHANNEL_PREFIX = IS_CODEX ? '' : 'claude/'
+
 
 // Migrate state from old 'weixin' dir to 'wechat' if needed
 const OLD_STATE_DIR = join(APP_HOME, 'channels', 'weixin')
@@ -754,8 +757,8 @@ const mcp = new Server(
     capabilities: {
       tools: {},
       experimental: {
-        'claude/channel': {},
-        'claude/channel/permission': {},
+        [CHANNEL_PREFIX + 'channel']: {},
+        [CHANNEL_PREFIX + 'channel/permission']: {},
       },
     },
     instructions: [
@@ -955,7 +958,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 // --- Permission relay ---
 
 const PermissionRequestSchema = z.object({
-  method: z.literal('notifications/claude/channel/permission_request'),
+  method: z.literal('notifications/' + CHANNEL_PREFIX + 'channel/permission_request'),
   params: z.object({
     request_id: z.string(),
     tool_name: z.string(),
@@ -1179,7 +1182,7 @@ async function handleInbound(msg: any): Promise<void> {
   const permMatch = PERMISSION_REPLY_RE.exec(rawText)
   if (permMatch && !RAW_MODE) {
     await mcp.notification({
-      method: 'notifications/claude/channel/permission',
+      method: 'notifications/' + CHANNEL_PREFIX + 'channel/permission',
       params: {
         request_id: permMatch[2].toLowerCase(),
         behavior: permMatch[1].toLowerCase().startsWith('y') ? 'allow' : 'deny',
@@ -1209,7 +1212,7 @@ ${esc(text)}
 `)
   } else {
     void mcp.notification({
-      method: 'notifications/claude/channel',
+      method: 'notifications/' + CHANNEL_PREFIX + 'channel',
       params: {
         content: text,
         meta: {
