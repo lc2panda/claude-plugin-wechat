@@ -14,3 +14,4 @@ CLAUDE.md
 docs/*.md
 docs/*.html
 docs/dev-*.md
+.DS_Store

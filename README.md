@@ -3,7 +3,7 @@
 <details open>
 <summary><h2>人类看这里</h2></summary>
 
-多渠道 Claude Code 插件 — 通过微信、飞书/Lark 与 AI 对话
+多渠道 Claude Code / Codex 插件 — 通过微信、飞书/Lark 与 AI 对话
 
 支持：文字、图片、文件、语音、视频、远程权限审批、飞书文档
 
@@ -20,7 +20,7 @@
 ```
 
 ```
-你的 Claude Code 怎么登录的？
+你的 AI Agent 怎么登录的？
   ├── claude.ai 账号 ──→ Channel 模式（全功能，远程审批）
   └── API Key ──→ ACP 模式（多 Agent：Claude / Copilot / Gemini / Codex / 通义千问）
 ```

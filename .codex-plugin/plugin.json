@@ -1,0 +1,44 @@
+{
+  "name": "wechat",
+  "version": "2.1.5",
+  "description": "Multi-channel AI messaging bridge — connect Codex to WeChat (微信) and Feishu/Lark (飞书). Supports text, images, files, voice, video, and remote permission relay via ACP protocol.",
+  "author": {
+    "name": "lc2panda",
+    "url": "https://github.com/lc2panda"
+  },
+  "homepage": "https://github.com/lc2panda/claude-plugin-wechat",
+  "repository": "https://github.com/lc2panda/claude-plugin-wechat.git",
+  "license": "MIT",
+  "keywords": [
+    "wechat",
+    "weixin",
+    "feishu",
+    "lark",
+    "codex",
+    "acp",
+    "messaging",
+    "channel",
+    "ai"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "WeChat & Feishu/Lark",
+    "shortDescription": "Chat with AI via WeChat or Feishu",
+    "longDescription": "Multi-channel AI messaging bridge supporting WeChat (微信) and Feishu/Lark (飞书). Send text, images, files, voice, and video messages. Includes access control with pairing, allowlists, and remote permission relay. Works via ACP (Agent Client Protocol) for any AI agent: Codex, Claude, Copilot, Gemini, Qwen, Opencode.",
+    "developerName": "lc2panda",
+    "category": "Communication",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/lc2panda/claude-plugin-wechat",
+    "privacyPolicyURL": "https://github.com/lc2panda/claude-plugin-wechat",
+    "termsOfServiceURL": "https://github.com/lc2panda/claude-plugin-wechat",
+    "defaultPrompt": [
+      "Scan QR code to connect WeChat",
+      "Configure Feishu/Lark app credentials",
+      "Approve a pending chat pairing"
+    ],
+    "brandColor": "#07C160"
+  }
+}

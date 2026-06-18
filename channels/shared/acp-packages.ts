@@ -7,7 +7,7 @@
 
 // ACP Claude package names — newest first, legacy as fallback
 export const ACP_CLAUDE_PACKAGES = [
-  '@agentclientprotocol/claude-agent-acp',  // v0.24.0+ (2026-03-26, agentclientprotocol org)
+  '@agentclientprotocol/claude-agent-acp',  // v0.24.0+ → latest 0.47.0 (2026-06-17)
   '@zed-industries/claude-code-acp',         // legacy ≤v0.23.x (zed-industries org)
 ] as const
 
@@ -17,7 +17,7 @@ export const AGENT_PRESETS: Record<string, { command: string; args: string[] }> 
   copilot:  { command: 'npx', args: ['@github/copilot', '--acp', '--yolo'] },
   gemini:   { command: 'npx', args: ['@google/gemini-cli', '--experimental-acp'] },
   qwen:     { command: 'npx', args: ['@qwen-code/qwen-code', '--acp', '--experimental-skills'] },
-  codex:    { command: 'npx', args: ['@zed-industries/codex-acp'] },
+  codex:    { command: 'npx', args: ['@zed-industries/codex-acp@0.16.0'] },
   opencode: { command: 'npx', args: ['opencode-ai', 'acp'] },
 }
 

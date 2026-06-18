@@ -1,7 +1,7 @@
 {
   "name": "claude-plugin-wechat",
-  "version": "2.1.4",
-  "description": "Multi-channel Claude Code plugin — WeChat, Feishu, DingTalk and more",
+  "version": "2.1.5",
+  "description": "Multi-channel Codex/Claude Code plugin — WeChat, Feishu, DingTalk and more",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -15,7 +15,7 @@
     "start:feishu": "bun channels/feishu/server.ts",
     "start:feishu:acp": "bun channels/feishu/acp-bridge.ts"
   },
-  "keywords": ["wechat", "weixin", "feishu", "lark", "claude", "claude-code", "mcp", "acp", "chatbot", "ai"],
+  "keywords": ["wechat", "weixin", "feishu", "lark", "claude", "claude-code", "codex", "mcp", "acp", "chatbot", "ai"],
   "repository": {
     "type": "git",
     "url": "https://github.com/lc2panda/claude-plugin-wechat.git"
