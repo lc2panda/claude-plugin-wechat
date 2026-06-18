@@ -1075,7 +1075,6 @@ if (RAW_MODE) {
           }
           continue
         }
-                const tagMatch = buf.match(/<reply user_id="([^"]+)">([\s\S]*?)<\/reply>/)
         if (!tagMatch) break
         const fullMatch = tagMatch[0]
         const userId = tagMatch[1]

@@ -1,3 +1,7 @@
+**此项目的任何功能、架构更新，必须在结束后同步更新相关文档。这是我们契约的一部分。**
+
+---
+
 <!--
 # AI Installation Instructions (Machine-Readable)
 

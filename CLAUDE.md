@@ -4,6 +4,7 @@
 
 ---
 
+
 ## 0. 时间真实性校验
 
 ### 第一次校验（项目初始分析）
@@ -80,6 +81,7 @@
 
 ---
 
+
 ### 第七次校验（Codex 适配 + 协议更新审查）
 
 | 项目 | 值 |
@@ -97,6 +99,7 @@
 
 ---
 
+
 ### 第八次校验（会话激活 + AGENTS.md 指令接收确认）
 
 | 项目 | 值 |
@@ -109,6 +112,24 @@
 | 最大偏差 | 13 秒（System vs Cloudflare，阈值 100 秒） |
 | **判定** | **通过 ✓** |
 | 备注 | 沙箱内 HTTP 被完全阻断，经提权后获取网络时间源；前次校验（第七次）距今约 18 分钟 |
+
+---
+
+
+
+### 第九次校验（会话重启 + 阵地状态摸排）
+
+| 项目 | 值 |
+|------|-----|
+| 校验发起 | 2026-06-18 11:44:01 +08:00 |
+| 校验完成 | 2026-06-18 11:44:14 +08:00 |
+| 本机系统时间 | 2026-06-18 11:44:01 +08:00 (Asia/Shanghai, +08:00) |
+| 时间源 1 | Google HTTPS Date → `Thu, 18 Jun 2026 03:44:10 GMT` = 11:44:10 +08:00 |
+| 时间源 2 | Cloudflare HTTPS Date → `Thu, 18 Jun 2026 03:44:12 GMT` = 11:44:12 +08:00 |
+| 时间源 3 | Timeanddate HTTPS Date → `Thu, 18 Jun 2026 03:44:14 GMT` = 11:44:14 +08:00 |
+| 最大偏差 | 13 秒（System vs Timeanddate，阈值 100 秒） |
+| **判定** | **通过 ✓** |
+| 备注 | Codex 重启后重连；三源互偏差 ≤4 秒；本机时区 Asia/Shanghai (+08:00) 与 AGENTS.md 要求 Asia/Singapore (+08:00) 偏移相同 |
 
 ---
 
@@ -162,6 +183,7 @@
 - `inbox/` — 下载的媒体附件存放目录
 
 ---
+
 
 ## 2. 证据清单（联网检索记录）
 
@@ -266,6 +288,7 @@
 
 ---
 
+
 ## 3. iLink Bot API 核心技术摘要
 
 ### API 端点（域名：`https://ilinkai.weixin.qq.com`）
@@ -305,6 +328,7 @@ X-WECHAT-UIN: base64(String(randomUint32()))  // 每次随机，防重放
 - 群聊权限模糊
 
 ---
+
 
 ## 4. Channel 实现方案调研报告
 
@@ -437,6 +461,7 @@ await mcp.connect(new StdioServerTransport())    // 4. stdio 传输（Claude Cod
 
 ---
 
+
 ## 5. 方案评估矩阵（≥10 方案）
 
 基于调研，以下是 12 个可行改进方案，按量化评分排序：
@@ -464,6 +489,7 @@ await mcp.connect(new StdioServerTransport())    // 4. stdio 传输（Claude Cod
 - **多账户支持**：需要重构整个状态管理和进程模型，与 Claude Code 单 Channel 实例模型冲突
 
 ---
+
 
 ## 6. 最优实现路线图（Top-10 方案）— 全部已完成
 
@@ -496,6 +522,7 @@ await mcp.connect(new StdioServerTransport())    // 4. stdio 传输（Claude Cod
 
 ---
 
+
 ## 7. 本项目与官方微信插件的实现对比（已更新）
 
 > **更新于**：2026-03-24 Phase 1/2/3 整合后
@@ -516,6 +543,7 @@ await mcp.connect(new StdioServerTransport())    // 4. stdio 传输（Claude Cod
 | Debug 模式 | 无 | /echo + /toggle-debug | ⬜ 低优先 |
 
 ---
+
 
 ## 8. Agent SDK 模式可行性方案（待审批）
 
@@ -742,17 +770,20 @@ Agent Client Protocol（ACP）是 AI Agent 与编辑器之间的开放标准通�
 
 ---
 
+
 ## 9. 冗余治理报告（原第8节）
 
 检查结果：项目文件结构清晰，无同名/同责/高相似冗余文件。各文件职责单一明确。
 
 ---
 
+
 ## 9. 特例登记
 
 （暂无）
 
 ---
+
 
 ## 10. Multi-Session 持续开发能力调研报告
 
@@ -1003,6 +1034,7 @@ Claude Code (Channel 模式, 1M context)
 
 ---
 
+
 ## 11. 技巧区（Claude Code 集成）
 
 - 计划模式：Shift+Tab 生成计划后再编码
@@ -1011,6 +1043,7 @@ Claude Code (Channel 模式, 1M context)
 - 参考实现：`https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram`
 
 ---
+
 
 ## 12. 飞书/Lark Bot API 深度调研报告
 
@@ -1800,6 +1833,7 @@ await client.im.v1.message.patch({
 
 ---
 
+
 ## 13. claude-code-acp Windows 兼容性调研报告
 
 > **调研时间**：2026-03-28 13:22:53 +08:00
@@ -2082,6 +2116,7 @@ const proc = spawn(cmd, args, {
 - `channels/feishu/acp-bridge.ts`（第 410-412 行，对应的 enqueueMessage 函数）
 
 ---
+
 
 ## 14. Codex 适配 + 协议更新审查（第七次校验）
 
