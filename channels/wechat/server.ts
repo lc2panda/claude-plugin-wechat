@@ -986,12 +986,25 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
 
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 
+// --- Long-poll state (declared before RAW_MODE to avoid TDZ) ---
+
+let getUpdatesBuf = ''
+try {
+  getUpdatesBuf = readFileSync(SYNC_BUF_FILE, 'utf8').trim()
+} catch {}
+
+const MAX_FAILURES = 3
+const BACKOFF_MS = 30000
+const RETRY_MS = 2000
+let failures = 0
+let pollTimeoutMs = 35000
+let shuttingDown = false
+
 // --- Connect transport (MCP or raw) ---
 
 if (RAW_MODE) {
   // --- Raw foreground mode: stdout for messages, stdin for replies ---
-  process.stderr.write('wechat raw: ready (--raw foreground mode)
-')
+  process.stderr.write('wechat raw: ready (--raw foreground mode)\n')
 
   // Concurrent stdin reader for reply commands
   const stdinForRaw = async () => {
@@ -1151,20 +1164,6 @@ ${esc(text)}
     })
   }
 }
-
-// --- Long-poll loop ---
-
-let getUpdatesBuf = ''
-try {
-  getUpdatesBuf = readFileSync(SYNC_BUF_FILE, 'utf8').trim()
-} catch {}
-
-const MAX_FAILURES = 3
-const BACKOFF_MS = 30000
-const RETRY_MS = 2000
-let failures = 0
-let pollTimeoutMs = 35000
-let shuttingDown = false
 
 async function pollLoop(): Promise<void> {
   process.stderr.write(`wechat channel: long-poll started (${BASE_URL})\n`)
