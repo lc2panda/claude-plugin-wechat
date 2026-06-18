@@ -133,6 +133,57 @@
 
 ---
 
+### 第十次校验（微信消息重启激活 + 纹身/README 治理启动）
+
+| 项目 | 值 |
+|------|-----|
+| 校验发起 | 2026-06-18 13:08:03 +08:00 |
+| 校验完成 | 2026-06-18 13:08:17 +08:00 |
+| 本机系统时间 | 2026-06-18 13:08:17 +08:00 (Asia/Shanghai, +08:00) |
+| 时间源 1 | Google HTTPS Date → `Thu, 18 Jun 2026 05:08:14 GMT` = 13:08:14 +08:00 |
+| 时间源 2 | Cloudflare HTTPS Date → `Thu, 18 Jun 2026 05:08:15 GMT` = 13:08:15 +08:00 |
+| 时间源 3 | Bing HTTPS Date → `Thu, 18 Jun 2026 05:08:17 GMT` = 13:08:17 +08:00 |
+| 最大偏差 | 3 秒（Google vs Bing，阈值 100 秒） |
+| **判定** | **通过 ✓** |
+| 备注 | 微信消息触发重启激活；三源互偏差 ≤3 秒；本机时区 Asia/Shanghai (+08:00) |
+
+---
+
+
+### 纹身与README治理报告（第十次校验后执行）
+
+**执行时间**：2026-06-18 13:08:17 +08:00
+
+**纹身声明补全（7/7 .ts 完成）**：
+
+| 文件 | Input/Output/Pos | 纹身誓言 |
+|------|:--:|:--:|
+| `channels/wechat/server.ts` | ✅ | ✅ |
+| `channels/wechat/login-qr.ts` | ✅ | ✅ |
+| `channels/wechat/login-poll.ts` | ✅ | ✅ |
+| `channels/wechat/acp-bridge.ts` | ✅ | ✅ |
+| `channels/feishu/server.ts` | ✅ | ✅ |
+| `channels/feishu/acp-bridge.ts` | ✅ | ✅ |
+| `channels/shared/acp-packages.ts` | ✅ | ✅ |
+
+**文件夹README治理（10个目录）**：
+
+| 目录 | 行数 | 状态 |
+|------|:--:|:--:|
+| `skills/` | 3 | ✅ 新建 |
+| `skills/feishu-access/` | 3 | ✅ 新建 |
+| `skills/feishu-configure/` | 3 | ✅ 新建 |
+| `skills/wechat-access/` | 3 | ✅ 新建 |
+| `skills/wechat-configure/` | 3 | ✅ 新建 |
+| `.codex-plugin/` | 3 | ✅ 新建 |
+| `.agents/` | 3 | ✅ 新建 |
+| `.agents/plugins/` | 3 | ✅ 新建 |
+| `.claude-plugin/` | 3 | ✅ 新建 |
+| `channels/` | 4 | ✅ 存量合规 |
+
+**冗余治理**：无发现。
+
+---
 ## 1. 项目概览
 
 **项目名称**：claude-channel-wechat（微信频道插件）

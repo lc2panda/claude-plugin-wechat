@@ -1,0 +1,3 @@
+- `feishu-access/` `feishu-configure/` `wechat-access/` `wechat-configure/`
+- 地位：渠道配置和访问控制技能定义
+- 一旦这里的结构发生变化，请务必更新我... 就像重新标记领地一样。

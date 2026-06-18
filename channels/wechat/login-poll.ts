@@ -1,12 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Step 2: Poll for QR scan status until confirmed or expired.
- * Usage: bun login-poll.ts <qrcode> [base-url]
- *
- * Outputs status lines to stderr, final result JSON to stdout.
- * Exit code 0 = confirmed, 1 = expired/error.
+ * Input: QR code token (argv) + iLink Bot API 扫码状态端点
+ * Output: 轮询状态到 stderr / 最终凭据 JSON 到 stdout / credentials.json 落盘
+ * Pos: 登录流程第2步 — 轮询扫码结果并持久化登录凭据
+ * 一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  */
-
 import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'

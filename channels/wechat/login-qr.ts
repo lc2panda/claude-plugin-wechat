@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Step 1: Fetch QR code and render it in terminal.
- * Outputs JSON as the last line: {"qrcode":"...","url":"..."}
- * so the caller can extract the qrcode token for polling.
+ * Input: 微信 iLink Bot API 登录端点（baseUrl） / 终端 stdin
+ * Output: 终端二维码渲染 + JSON 结果 {"qrcode":"...","url":"..."} 到 stdout
+ * Pos: 登录流程第1步 — 获取并展示 QR 码供用户扫码
+ * 一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  */
-
 import { existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'

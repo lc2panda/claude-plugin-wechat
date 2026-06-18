@@ -3,6 +3,7 @@
  * Input: Feishu/Lark messages via official SDK WebSocket long connection
  * Output: Feishu/Lark replies via REST API
  * Pos: MCP Channel server — bridges Feishu/Lark into Claude Code sessions
+ * 一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  *
  * Uses @larksuiteoapi/node-sdk WSClient for message reception (no public IP needed).
  * State lives in ~/.<pandacc|claude>/channels/feishu/

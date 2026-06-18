@@ -1,0 +1,3 @@
+- 文件：`marketplace.json`
+- 地位：Codex 插件市场注册 — wechat@lc2panda-plugins
+- 一旦这里的结构发生变化，请务必更新我... 就像重新标记领地一样。

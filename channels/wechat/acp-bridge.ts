@@ -3,6 +3,7 @@
  * Input: WeChat messages via iLink Bot API + ACP agent responses
  * Output: WeChat replies via iLink Bot API
  * Pos: ACP bridge — connects WeChat to any ACP-compatible AI agent (Claude Code, Copilot, Gemini, Codex, etc.)
+ * 一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  *
  * Uses Agent Client Protocol (ACP) for persistent agent sessions.
  * Each WeChat user gets a dedicated agent subprocess with session continuity.

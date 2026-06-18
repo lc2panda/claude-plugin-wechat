@@ -3,6 +3,7 @@
  * Input: WeChat messages via iLink Bot API long-poll + MCP tool calls (or raw stdin in --raw mode)
  * Output: MCP channel notifications (or raw stdout in --raw mode) + WeChat replies via iLink Bot API
  * Pos: Core MCP channel server — bridge between WeChat and Claude Code / Codex session
+ * 一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  *
  * --raw mode: foreground text transport for exec_command / terminal use.
  *   stdout: <msg user_id="..." ts="...">text</msg>
