@@ -1,8 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Input: WeChat messages via iLink Bot API long-poll + MCP tool calls from Claude Code
- * Output: MCP channel notifications to Claude Code + WeChat replies via iLink Bot API
- * Pos: Core MCP channel server — bridge between WeChat and Claude Code session
+ * Input: WeChat messages via iLink Bot API long-poll + MCP tool calls (or raw stdin in --raw mode)
+ * Output: MCP channel notifications (or raw stdout in --raw mode) + WeChat replies via iLink Bot API
+ * Pos: Core MCP channel server — bridge between WeChat and Claude Code / Codex session
+ *
+ * --raw mode: foreground text transport for exec_command / terminal use.
+ *   stdout: <msg user_id="..." ts="...">text</msg>
+ *   stdin:  <reply user_id="...">text</reply>
  *
  * Self-contained MCP server with full access control: pairing, allowlists.
  * State lives in ~/.<pandacc|claude>/channels/wechat/ — managed by the /wechat:access
@@ -25,6 +29,9 @@ import {
 import { homedir } from 'os'
 import { join, sep } from 'path'
 import { z } from 'zod'
+
+// Raw foreground mode (--raw flag): skip MCP, use stdout/stdin text transport
+const RAW_MODE = process.argv.includes('--raw')
 
 // Detect home: prefer .pandacc over .claude
 import { existsSync } from 'fs'
@@ -979,9 +986,68 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
 
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 
-// --- Connect MCP transport ---
+// --- Connect transport (MCP or raw) ---
 
-await mcp.connect(new StdioServerTransport())
+if (RAW_MODE) {
+  // --- Raw foreground mode: stdout for messages, stdin for replies ---
+  process.stderr.write('wechat raw: ready (--raw foreground mode)
+')
+
+  // Concurrent stdin reader for reply commands
+  const stdinForRaw = async () => {
+    const reader = (Bun.stdin as any).stream().getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value)
+      // Process complete lines: <reply user_id="xxx">text</reply>
+      while (true) {
+        const tagMatch = buf.match(/<reply user_id="([^"]+)">([\s\S]*?)<\/reply>/)
+        if (!tagMatch) break
+        const fullMatch = tagMatch[0]
+        const userId = tagMatch[1]
+        const text = tagMatch[2].trim()
+        buf = buf.replace(fullMatch, '')
+        if (!text) continue
+        const ct = contextTokenMap.get(userId)
+        if (!ct) {
+          process.stdout.write(`<error user_id="${userId}">no context_token — wait for user to send a message first</error>
+`)
+          continue
+        }
+        try {
+          stopTypingKeepAlive()
+          const access = loadAccess()
+          const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
+          const plainText = markdownToPlaintext(text)
+          const chunks = chunk(plainText, limit)
+          for (const c of chunks) {
+            if (access.humanDelay && chunks.length > 1) {
+              await Bun.sleep(Math.min(c.length * 50, 3000))
+            }
+            await sendMessage(userId, c, ct)
+          }
+          cancelTyping(userId).catch(() => {})
+          process.stdout.write(`<sent user_id="${userId}" chunks="${chunks.length}"/>
+`)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          process.stdout.write(`<error user_id="${userId}">${msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</error>
+`)
+        }
+      }
+    }
+  }
+
+  // Run poll loop and stdin reader concurrently
+  pollLoop() // fire-and-forget (runs forever)
+  await stdinForRaw()
+} else {
+  // --- MCP mode (existing code) ---
+  await mcp.connect(new StdioServerTransport())
+}
 
 // --- Inbound message handler ---
 
@@ -1041,7 +1107,7 @@ async function handleInbound(msg: any): Promise<void> {
     .join(' ')
 
   const permMatch = PERMISSION_REPLY_RE.exec(rawText)
-  if (permMatch) {
+  if (permMatch && !RAW_MODE) {
     await mcp.notification({
       method: 'notifications/claude/channel/permission',
       params: {
@@ -1064,17 +1130,26 @@ async function handleInbound(msg: any): Promise<void> {
     ? new Date(msg.create_time_ms).toISOString()
     : new Date().toISOString()
 
-  void mcp.notification({
-    method: 'notifications/claude/channel',
-    params: {
-      content: text,
-      meta: {
-        user_id: senderId,
-        ...(msg.context_token ? { context_token: msg.context_token } : {}),
-        ts,
+  if (RAW_MODE) {
+    // Raw transport: XML-wrapped stdout for AI readability
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    process.stdout.write(`<msg user_id="${senderId}" ts="${ts}">
+${esc(text)}
+</msg>
+`)
+  } else {
+    void mcp.notification({
+      method: 'notifications/claude/channel',
+      params: {
+        content: text,
+        meta: {
+          user_id: senderId,
+          ...(msg.context_token ? { context_token: msg.context_token } : {}),
+          ts,
+        },
       },
-    },
-  })
+    })
+  }
 }
 
 // --- Long-poll loop ---
@@ -1144,7 +1219,9 @@ async function pollLoop(): Promise<void> {
   process.stderr.write('wechat channel: poll loop stopped\n')
 }
 
-pollLoop()
+if (!RAW_MODE) {
+  pollLoop()
+}
 
 // --- Graceful shutdown ---
 

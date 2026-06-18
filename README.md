@@ -338,6 +338,20 @@ wechat-acp --cwd /项目路径          # 指定工作目录
 
 </details>
 
+<details>
+<summary><b>Raw 前台模式</b>（Codex exec_command 推荐 ⭐）</summary>
+
+> 不依赖 MCP 插件体系，直接用 `exec_command` 在前台运行。消息实时打印到终端。
+
+| 步骤 | 操作 | 在哪 |
+|------|------|------|
+| 1 启动 | `bun channels/wechat/server.ts --raw` | 终端 / Codex exec_command |
+| 2 收发 | 消息以 `<msg user_id="..." ts="...">text</msg>` 格式出现在 stdout，回复写入 stdin：`<reply user_id="...">text</reply>` | Codex |
+
+> 详细协议和 Codex 交互模式见 [README 开头 AI 指令区](#) 的「Raw 前台模式」章节。
+
+</details>
+
 </details>
 
 ---
@@ -429,6 +443,18 @@ wechat-acp --cwd /项目路径          # 指定工作目录
 | 6 凭据 | 告诉 Codex 「配置飞书」 → 按提示输入 App ID 和 App Secret | Codex |
 | 7 启动 | `ACP_AGENT=codex feishu-acp` | 系统终端 |
 | 8 使用 | 私聊机器人或群聊 @机器人，`/cwd` 切换目录 | 飞书 |
+
+</details>
+
+<details>
+<summary><b>Raw 前台模式</b>（Codex exec_command 推荐 ⭐）</summary>
+
+> 与微信类似，飞书也支持 `--raw` 前台模式。消息带 `chat_id`。
+
+| 步骤 | 操作 | 在哪 |
+|------|------|------|
+| 1 启动 | `bun channels/feishu/server.ts --raw` | 终端 / Codex exec_command |
+| 2 收发 | stdout: `<msg user_id="..." chat_id="..." ts="...">text</msg>`；stdin: `<reply user_id="..." chat_id="...">text</reply>` | Codex |
 
 </details>
 

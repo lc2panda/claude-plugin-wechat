@@ -17,6 +17,9 @@ import { homedir } from 'os'
 import { join } from 'path'
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+
+// Raw foreground mode (--raw flag): skip MCP, use stdout/stdin text transport
+const RAW_MODE = process.argv.includes('--raw')
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   ListToolsRequestSchema,
@@ -841,9 +844,55 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
 })
 
-// --- Connect MCP ---
+// --- Connect transport (MCP or raw) ---
 
-await mcp.connect(new StdioServerTransport())
+if (RAW_MODE) {
+  // --- Raw foreground mode ---
+  process.stderr.write('feishu raw: ready (--raw foreground mode)
+')
+
+  // Concurrent stdin reader for reply commands
+  const stdinForRaw = async () => {
+    const reader = (Bun.stdin as any).stream().getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value)
+      while (true) {
+        const tagMatch = buf.match(/<reply user_id="([^"]+)" chat_id="([^"]*)">([\s\S]*?)<\/reply>/)
+        if (!tagMatch) break
+        const fullMatch = tagMatch[0]
+        const userId = tagMatch[1]
+        const chatId = tagMatch[2] || userId
+        const text = tagMatch[3].trim()
+        buf = buf.replace(fullMatch, '')
+        if (!text) continue
+        try {
+          removeTypingReaction(chatId)
+          const chunks = chunk(text, 2000)
+          for (const c of chunks) {
+            if (text.length > 2000) await Bun.sleep(Math.min(c.length * 50, 3000))
+            await sendTextMessage(chatId, c)
+          }
+          process.stdout.write(`<sent user_id="${userId}" chat_id="${chatId}" chunks="${chunks.length}"/>
+`)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          process.stdout.write(`<error user_id="${userId}">${msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</error>
+`)
+        }
+      }
+    }
+  }
+
+  // Run stdin reader (polling is handled by feishu SDK internally)
+  await stdinForRaw()
+} else {
+  // --- MCP mode (existing code) ---
+  await mcp.connect(new StdioServerTransport())
+}
 
 // --- Inbound message handler ---
 
@@ -1004,7 +1053,7 @@ async function handleInbound(data: any): Promise<void> {
 
   // Check for permission relay verdict
   const permMatch = PERMISSION_REPLY_RE.exec(text)
-  if (permMatch) {
+  if (permMatch && !RAW_MODE) {
     await mcp.notification({
       method: 'notifications/claude/channel/permission',
       params: {
@@ -1031,17 +1080,25 @@ async function handleInbound(data: any): Promise<void> {
     process.stderr.write(`feishu channel: inbound from ${senderId} in ${chatId}: ${text.slice(0, 100)}\n`)
   }
 
-  await mcp.notification({
-    method: 'notifications/claude/channel',
-    params: {
-      content: text,
-      meta: {
-        user_id: senderId,
-        chat_id: chatId,
+  if (RAW_MODE) {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    process.stdout.write(`<msg user_id="${senderId}" chat_id="${chatId}" ts="${ts}">
+${esc(text)}
+</msg>
+`)
+  } else {
+    await mcp.notification({
+      method: 'notifications/claude/channel',
+      params: {
+        content: text,
+        meta: {
+          user_id: senderId,
+          chat_id: chatId,
         ts,
       },
     },
   })
+  }
 }
 
 // --- Start WebSocket long connection ---

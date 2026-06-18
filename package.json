@@ -13,7 +13,9 @@
     "start:wechat": "bun channels/wechat/server.ts",
     "start:wechat:acp": "bun channels/wechat/acp-bridge.ts",
     "start:feishu": "bun channels/feishu/server.ts",
-    "start:feishu:acp": "bun channels/feishu/acp-bridge.ts"
+    "start:feishu:acp": "bun channels/feishu/acp-bridge.ts",
+    "start:wechat:raw": "bun channels/wechat/server.ts --raw",
+    "start:feishu:raw": "bun channels/feishu/server.ts --raw"
   },
   "keywords": ["wechat", "weixin", "feishu", "lark", "claude", "claude-code", "codex", "mcp", "acp", "chatbot", "ai"],
   "repository": {
