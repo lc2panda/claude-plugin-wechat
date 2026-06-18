@@ -8,8 +8,7 @@
 
 ### 待处理
 
-- [ ] 检查 CLAUDE.md 第 13 章 ACP 可靠性方案（方案 A-E）是否已实现
-- [ ] 运行 TypeScript 编译检查
+（无）
 
 ### 已完成
 
@@ -19,6 +18,8 @@
 - [x] 文件夹README治理 — 9个目录新建README（3行内）+ channels/存量合规
 - [x] CLAUDE.md 第十次时间校验记录写入
 - [x] CLAUDE.md 纹身与README治理报告写入
+- [x] ACP可靠性方案实现验证 — 方案A/B/C/D/E 全部已实现
+- [x] TypeScript编译检查 — N/A（Bun项目，.ts直接运行无编译步骤）
 
 ### 封锁项
 
