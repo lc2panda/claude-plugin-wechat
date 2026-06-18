@@ -1018,6 +1018,64 @@ if (RAW_MODE) {
       // Process complete lines: <reply user_id="xxx">text</reply>
       while (true) {
         const tagMatch = buf.match(/<reply user_id="([^"]+)">([\s\S]*?)<\/reply>/)
+        // Also check for download commands
+        const dlMatch = buf.match(/<download attachment_id="([^"]+)"\/>/)
+        if (dlMatch) {
+          const fullMatch = dlMatch[0]
+          const attachmentId = dlMatch[1]
+          buf = buf.replace(fullMatch, '')
+          const info = pendingAttachments.get(attachmentId)
+          if (!info) {
+            process.stdout.write(`<error>attachment ${attachmentId} not found or already downloaded</error>
+`)
+            continue
+          }
+          try {
+            mkdirSync(INBOX_DIR, { recursive: true, mode: 0o700 })
+            const cdnUrl = info.fullUrl
+              ?? `${CDN_BASE}/c2c/download?encrypted_query_param=${encodeURIComponent(info.encryptQueryParam)}`
+            const res = await fetch(cdnUrl)
+            if (!res.ok) { process.stdout.write(`<error>CDN download failed: ${res.status}</error>
+`); continue }
+            const encrypted = Buffer.from(await res.arrayBuffer())
+            const decrypted = info.aesKeyBase64
+              ? decryptAesEcb(encrypted, parseAesKey(info.aesKeyBase64))
+              : encrypted
+            const safeName = info.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+            const outPath = join(INBOX_DIR, `${Date.now()}-${safeName}`)
+            writeFileSync(outPath, decrypted, { mode: 0o600 })
+            let finalPath = outPath
+            if (info.filename.endsWith('.silk')) {
+              try {
+                const { decode } = await import('silk-wasm')
+                const result = await decode(decrypted, 24000)
+                const pcm = result.data
+                const wavSize = 44 + pcm.byteLength
+                const wav = Buffer.allocUnsafe(wavSize)
+                let o = 0
+                wav.write('RIFF', o); o += 4; wav.writeUInt32LE(wavSize - 8, o); o += 4
+                wav.write('WAVE', o); o += 4; wav.write('fmt ', o); o += 4
+                wav.writeUInt32LE(16, o); o += 4; wav.writeUInt16LE(1, o); o += 2
+                wav.writeUInt16LE(1, o); o += 2; wav.writeUInt32LE(24000, o); o += 4
+                wav.writeUInt32LE(48000, o); o += 4; wav.writeUInt16LE(2, o); o += 2
+                wav.writeUInt16LE(16, o); o += 2; wav.write('data', o); o += 4
+                wav.writeUInt32LE(pcm.byteLength, o); o += 4
+                Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).copy(wav, o)
+                finalPath = outPath.replace(/\.silk$/, '.wav')
+                writeFileSync(finalPath, wav, { mode: 0o600 })
+              } catch { /* keep original .silk */ }
+            }
+            pendingAttachments.delete(attachmentId)
+            process.stdout.write(`<file attachment_id="${attachmentId}" path="${finalPath}"/>
+`)
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            process.stdout.write(`<error>download ${attachmentId}: ${msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</error>
+`)
+          }
+          continue
+        }
+                const tagMatch = buf.match(/<reply user_id="([^"]+)">([\s\S]*?)<\/reply>/)
         if (!tagMatch) break
         const fullMatch = tagMatch[0]
         const userId = tagMatch[1]
