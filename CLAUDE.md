@@ -2523,3 +2523,41 @@ const proc = spawn(cmd, args, {
 
 5 文件构建全绿（wechat server/acp + feishu server/acp/cardkit-stream，均 exit=0）。
 
+---
+
+## 18. 飞书工具调用流式对齐 + 文档同步（2026-06-23）
+
+> **审批**：Comdr 微信审批通过
+
+### 18.1 飞书工具调用流式补齐（对齐微信）
+
+独立核查发现微信/飞书工具调用流式不对称：微信有 TOOL_CALL_START(11)/RESULT(12) 结构化推送，飞书仅 log 不显示。
+
+修复（channels/feishu/acp-bridge.ts）：受 cardkit 单卡片 markdown 流架构限制，改为文本形式呈现工具调用过程：
+- tool_call → 推送 `> 🔧 正在调用 \`toolName\`...`
+- tool_call_update → 推送 `> ✅ 完成` / `> ❌ 失败` / `> ⛔ 被拒绝`
+- 新增 FEISHU_STREAM_TOOL_CALLS 开关（默认开）
+- best-effort，降级模式不强制显示
+
+### 18.2 reply 工具机制澄清（非 bug）
+
+排查确认：协调器/orchestrator 模式会话调用 reply 报 "No such tool available" 是架构设计，非缺陷。
+- reply 在 server.ts:838 以裸名注册，Claude Code 暴露为 mcp__wechat__reply
+- MCP transport（stdio）仅存在于主会话进程
+- 协调器/Task 子代理是独立 agent 上下文，无 MCP transport handle，故工具表不含 mcp__wechat__* （server.ts:831 instructions 已明确说明）
+- 正确姿势：worker 返回文本给主会话，由主会话代调 reply
+- 功能正常：入站 channel 通知正常到达，普通会话 reply 正常可用
+
+### 18.3 文档同步修复
+
+| 修复项 | 内容 |
+|--------|------|
+| 版本漂移 | .codex-plugin/plugin.json + marketplace.json 从 2.1.5 对齐到 2.1.9 |
+| README 流式文档 | 新增环境变量/Streaming 小节（11 个流式变量 + ACP 通用配置） |
+| plugin.json description | 补充流式能力说明 |
+| configure SKILL.md | wechat/feishu 各补流式配置指引 |
+
+### 18.4 命令精确性审查结论
+
+逐条核对 README + 4 个 skill 全部命令，对照 9 个真实文件交叉验证：marketplace 名（lc2panda-plugins）、仓库路径（lc2panda/claude-plugin-wechat）、插件名（wechat）、skill 命令名、脚本路径、启动 flag、bin 名称全部准确。**无"照着做会失败"的命令错误**，无历史版本残留。
+

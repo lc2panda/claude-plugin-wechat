@@ -72,6 +72,19 @@ const AGENT_ENV: Record<string, string> = (() => {
 const MAX_CONCURRENT_USERS = parseInt(process.env.ACP_MAX_USERS ?? '10', 10)
 const IDLE_TIMEOUT_MS = parseInt(process.env.ACP_IDLE_TIMEOUT ?? '86400000', 10)
 
+/**
+ * Whether to surface ACP tool-call progress as inline text in the cardkit stream.
+ * Default ON. Set FEISHU_STREAM_TOOL_CALLS=0 to suppress (some users find the
+ * "正在调用 X" lines distracting). This mirrors WeChat's TOOL_CALL_START/RESULT
+ * UX, but — because cardkit is a single markdown text stream with no structured
+ * tool-call item concept — we render the progress as quoted markdown lines.
+ */
+function streamToolCallsEnabled(): boolean {
+  const v = process.env.FEISHU_STREAM_TOOL_CALLS
+  if (v == null || v === '') return true
+  return v !== '0' && v.toLowerCase() !== 'false' && v.toLowerCase() !== 'off'
+}
+
 // --- Debug mode ---
 
 function isDebugMode(): boolean {
@@ -290,6 +303,8 @@ class FeishuAcpClient implements acp.Client {
   private logFn: (msg: string) => void
   /** Optional live streaming card; when set, chunks are mirrored to it in real time. */
   private stream: CardkitStreamController | null = null
+  /** Tool titles keyed by toolCallId, so tool_call_update can name the tool that finished. */
+  private toolTitles = new Map<string, string>()
 
   constructor(opts: { log: (msg: string) => void }) {
     this.logFn = opts.log
@@ -318,8 +333,33 @@ class FeishuAcpClient implements acp.Client {
         break
       case 'tool_call':
         this.logFn(`[tool] ${update.title} (${update.status})`)
+        // Align with WeChat's TOOL_CALL_START (type=11): surface tool-call start
+        // to the user. cardkit has no structured tool-call item, so we render it
+        // as a quoted markdown line inline in the text stream, at the position it
+        // was triggered. Best-effort: only when a live stream is available.
+        {
+          const toolName = update.title || update.toolCallId || 'tool'
+          if (update.toolCallId) this.toolTitles.set(update.toolCallId, toolName)
+          if (streamToolCallsEnabled() && this.stream) {
+            this.stream.push(`\n> 🔧 正在调用 \`${toolName}\`...\n`)
+          }
+        }
         break
       case 'tool_call_update':
+        // Align with WeChat's TOOL_CALL_RESULT (type=12): surface tool completion
+        // status as an inline quoted markdown line (cardkit text-stream limitation).
+        if (streamToolCallsEnabled() && this.stream) {
+          const toolName =
+            update.title || (update.toolCallId ? this.toolTitles.get(update.toolCallId) : undefined) || 'tool'
+          let marker: string | null = null
+          if (update.status === 'completed') marker = `\n> ✅ \`${toolName}\` 完成\n`
+          else if (update.status === 'failed') marker = `\n> ❌ \`${toolName}\` 失败\n`
+          // Some agents report a rejected/cancelled status for denied tool calls.
+          else if ((update.status as string) === 'rejected' || (update.status as string) === 'cancelled')
+            marker = `\n> ⛔ \`${toolName}\` 被拒绝\n`
+          if (marker) this.stream.push(marker)
+          if (update.toolCallId && update.status === 'completed') this.toolTitles.delete(update.toolCallId)
+        }
         if (update.status === 'completed' && update.content) {
           for (const c of update.content) {
             if (c.type === 'diff') {

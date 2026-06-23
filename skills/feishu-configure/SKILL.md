@@ -78,3 +78,7 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
 - Pretty-print JSON (2-space indent).
 - Create `<STATE_DIR>/` directory if missing.
 - Never log app_secret in plaintext — mask it in status display.
+
+## 流式回复
+
+ACP 模式下默认开启 cardkit 打字机效果，工具调用过程会实时显示。如需关闭流式设 `FEISHU_STREAMING=0`；如需关闭工具调用显示设 `FEISHU_STREAM_TOOL_CALLS=0`。Channel 模式默认非流式，可设 `FEISHU_CHANNEL_PSEUDO_STREAM=1` 启用伪流式。

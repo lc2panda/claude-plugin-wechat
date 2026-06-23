@@ -142,3 +142,7 @@ A: 这是 MCP 协议的物理限制，不是 bug。Sub-agent 运行在独立的�
 **Q: 为什么不能直接在 sub-agent 里向 iLink HTTP API 发送消息？**
 
 A: 即使 sub-agent 直接 POST 到 iLink 后端的 `sendmessage` 端点，也需要有效的 `context_token`。该协议采用 last-wins 模型——服务端按用户缓存最新一个 token，旧 token 在用户发新消息后就不再保证可用。Sub-agent 手上的 token 来自任务派发时刻，几分钟后通常已不是最新。统一由主会话发送可以彻底规避这一时序问题。
+
+**Q: 流式回复怎么配置？**
+
+A: 流式回复：ACP 模式下默认开启实时打字机效果。如需关闭，设环境变量 `WECHAT_STREAMING=0`。

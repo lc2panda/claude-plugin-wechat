@@ -491,6 +491,41 @@ wechat-acp --cwd /项目路径          # 指定工作目录
 
 </details>
 
+---
+
+<details>
+<summary><h3>环境变量 / Streaming</h3></summary>
+
+流式回复（ACP 模式默认开启，实时打字机效果）：
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `WECHAT_STREAMING` | on | 微信 ACP 流式回复开关，设 `0`/`false`/`off` 关闭 |
+| `WECHAT_STREAM_CHARS` | 100 | 流式按字符数刷新阈值 |
+| `WECHAT_STREAM_MS` | 1000 | 流式按时间刷新阈值（毫秒） |
+| `WECHAT_STREAM_SAFE_MULTI` | 0 | 多分块保守流式模式（防客户端渲染语义偏离） |
+| `FEISHU_STREAMING` | on | 飞书 ACP 真流式卡片开关 |
+| `FEISHU_CHANNEL_PSEUDO_STREAM` | 0 | 飞书 Channel 模式伪流式（设 `1` 开启，注意 5 QPS 限制） |
+| `FEISHU_STREAMING_FREQ_MS` | 70 | cardkit 打字机刷新频率（毫秒） |
+| `FEISHU_STREAMING_STEP` | 1 | cardkit 打字机每次步进字符数 |
+| `FEISHU_STREAMING_STRATEGY` | fast | cardkit 打字机策略（`fast`/`delay`） |
+| `FEISHU_STREAM_TOOL_CALLS` | on | 飞书卡片是否显示工具调用过程 |
+
+ACP 通用配置：
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `ACP_AGENT` | claude | ACP agent 选择（claude/codex/copilot/gemini） |
+| `ACP_AGENT_COMMAND` | — | 自定义 agent 启动命令 |
+| `ACP_AGENT_ARGS` | — | 自定义 agent 参数 |
+| `ACP_AGENT_CWD` | — | agent 工作目录 |
+| `ACP_MAX_USERS` | 10 | 最大并发用户数 |
+| `ACP_IDLE_TIMEOUT` | 24h | 会话空闲超时 |
+
+> 注：流式回复主要适用于 ACP 模式（有真实增量来源）。MCP Channel 模式（claude.ai 登录）回复为整段生成；飞书 Channel 模式需显式设置 `FEISHU_CHANNEL_PSEUDO_STREAM=1` 才启用伪流式打字机效果。
+
+</details>
+
 ### 相关项目
 
 - **企业微信：** [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)
