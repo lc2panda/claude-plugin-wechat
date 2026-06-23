@@ -2474,3 +2474,52 @@ const proc = spawn(cmd, args, {
 3. 飞书 server.ts 伪流式默认关闭或仅长文本启用（避免 3+N API 调用放大）
 4. 统一两端流式开关默认值宽容度（WECHAT_STREAMING 仅判 '0'，FEISHU 含 false/off）
 
+---
+
+## 17. P3 流式优化 + 官方语义确认（2026-06-23）
+
+> **实施时间**：2026-06-23（第十一次时间校验锚点）
+> **审批**：Comdr 微信审批通过
+
+### 17.1 重大发现：iLink 流式渲染语义确认为 append（非 last-wins）
+
+通过下载分析官方包 @tencent-weixin/openclaw-weixin@2.4.6 源码（messaging/send.ts、reply-progress-sender.ts、channel.ts、api/types.ts），**确认 iLink Bot 流式多分块渲染语义**：
+
+| 维度 | 官方实现 |
+|------|---------|
+| 文本分块 | 上层 blockStreaming 合并（minChars:200, idleMs:3000），每块调用一次 delivery hook |
+| 每块发送 | 每个文本块都是独立 message_state=FINISH 消息 |
+| run_id | 整轮共享一个（分组文本块+工具事件，**不触发替换**） |
+| client_id | 每条消息全新生成，**从不复用** |
+| msg_id | 预留字段，**全源码无写入，无 item 级 PATCH 路径** |
+| **多块渲染语义** | **append（追加），各自独立显示，非 last-wins** |
+
+**修正**：第 16 章中「多分块 FINISH 互相覆盖导致截断」的担忧是基于未验证假设，经官方源码证伪。run_id 仅作分组用途，不触发覆盖。
+
+### 17.2 P3 优化清单
+
+| # | 优化 | 文件 | 实现 |
+|---|------|------|------|
+| P3-1 | 微信多分块流式改为官方对齐的 append 全 FINISH | wechat/acp-bridge.ts | 默认每块用 sendStreamFinish（同 run_id、新 client_id、FINISH）；保守回退 WECHAT_STREAM_SAFE_MULTI=1 恢复「首块流式+余块普通」 |
+| P3-2 | 飞书 cardkit flushNow 真 promise 链锁 | feishu/cardkit-stream.ts | flushing 改常驻 promise 链（.then(doFlush)），彻底消除 finish-vs-timer 双重 doFlush 竞态 |
+| P3-3 | 飞书 server.ts 伪流式默认关闭 | feishu/server.ts + cardkit-stream.ts | 新增 FEISHU_CHANNEL_PSEUDO_STREAM（默认关），避免 Channel 模式 3+N API 调用放大；ACP 真流式不受影响 |
+| P3-4 | 两端流式开关宽容度统一 | wechat/acp-bridge.ts | WECHAT_STREAMING 支持 0/false/off（忽略大小写），与飞书 FEISHU_STREAMING 一致 |
+
+### 17.3 环境变量总表（流式相关）
+
+| 变量 | 作用域 | 默认 | 说明 |
+|------|--------|------|------|
+| WECHAT_STREAMING | 微信 ACP | 开启 | 0/false/off 关闭 |
+| WECHAT_STREAM_CHARS | 微信 ACP | 100 | GENERATING 字符触发阈值 |
+| WECHAT_STREAM_MS | 微信 ACP | 1000 | GENERATING 时间触发阈值 |
+| WECHAT_STREAM_SAFE_MULTI | 微信 ACP | 0（关） | 1 启用保守多块降级（防客户端偏离 append 语义） |
+| FEISHU_STREAMING | 飞书 ACP | 开启 | 0/false/off 关闭真流式 |
+| FEISHU_CHANNEL_PSEUDO_STREAM | 飞书 Channel | 关闭 | 1/true/on 开启伪流式打字机 |
+| FEISHU_STREAMING_FREQ_MS | 飞书 | 70 | 打字间隔 |
+| FEISHU_STREAMING_STEP | 飞书 | 1 | 每次字符数 |
+| FEISHU_STREAMING_STRATEGY | 飞书 | fast | fast/delay |
+
+### 17.4 验证
+
+5 文件构建全绿（wechat server/acp + feishu server/acp/cardkit-stream，均 exit=0）。
+

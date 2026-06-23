@@ -102,9 +102,15 @@ const IDLE_TIMEOUT_MS = parseInt(process.env.ACP_IDLE_TIMEOUT ?? '86400000', 10)
 // pushed to WeChat in real time using message_state=GENERATING, ending with a
 // final message_state=FINISH. New fields (message_state/run_id/tool_call items)
 // are additive: older iLink backends silently ignore them, so the final FINISH
-// message always arrives intact. Disable with WECHAT_STREAMING=0 to fall back to
-// the single FINISH reply.
-const STREAMING_ENABLED = (process.env.WECHAT_STREAMING ?? '1') !== '0'
+// message always arrives intact. Disable by setting WECHAT_STREAMING to 0/false/off
+// (case-insensitive) to fall back to the single FINISH reply. This tolerance matches
+// the Feishu side's streamingEnabled() (cardkit-stream.ts) for consistency.
+function streamingEnabled(): boolean {
+  const v = process.env.WECHAT_STREAMING
+  if (v == null || v === '') return true
+  return v !== '0' && v.toLowerCase() !== 'false' && v.toLowerCase() !== 'off'
+}
+const STREAMING_ENABLED = streamingEnabled()
 // Throttle: flush accumulated GENERATING text once it reaches this many chars
 // or this many ms since the last push, whichever comes first. Keeps us well
 // under iLink's (undocumented) ~5 QPS budget.
@@ -647,11 +653,18 @@ async function sendToolCallEvent(
 }
 
 // Final text reply for a streamed turn: message_state=FINISH + run_id, is_completed=true.
-// IMPORTANT: this relies on the UNVERIFIED ASSUMPTION that the WeChat client treats
-// a FINISH item as last-wins by run_id (replacing the GENERATING fragments shown for
-// the same run_id). This has NOT been validated against a real client. Callers must
-// therefore send AT MOST ONE sendStreamFinish per run_id; multi-chunk replies append
-// the remaining chunks via plain sendMessage to avoid truncation/duplication.
+//
+// RENDER SEMANTICS (confirmed against official @tencent-weixin/openclaw-weixin
+// v2.4.6 source, 2026-06): the official implementation delivers every coalesced
+// text block of a turn via the same sendmessage shape — message_state=FINISH,
+// the turn's shared run_id, and a FRESH client_id per block (generateClientId()).
+// It NEVER sets msg_id (the field exists in api/types.ts but is never assigned),
+// so there is NO item-level PATCH/update path; multiple FINISH messages sharing
+// one run_id are rendered as APPEND (independent messages), not last-wins. The
+// SDK coalesces text upstream (blockStreaming minChars:200 idleMs:3000) and calls
+// the delivery hook once per block, each an independent FINISH with the same
+// run_id. Therefore sending multiple FINISH chunks under one run_id is safe.
+// This is derived from official SOURCE, not a real-device packet capture.
 async function sendStreamFinish(
   to: string,
   text: string,
@@ -1561,36 +1574,42 @@ async function processQueue(session: UserSession): Promise<void> {
 
         // Send reply back to WeChat.
         //
-        // NOTE: the iLink streaming render semantics are an UNVERIFIED ASSUMPTION
-        // (last-wins by run_id: a FINISH item with the turn's run_id replaces the
-        // GENERATING fragments already shown). We have not validated this against a
-        // real WeChat client. Because of that uncertainty we only trust streaming
-        // FINISH for the SINGLE-chunk case, where last-wins safely collapses the
-        // GENERATING fragments into one final message.
+        // RENDER SEMANTICS — confirmed via official @tencent-weixin/openclaw-weixin
+        // v2.4.6 SOURCE analysis (2026-06), see sendStreamFinish() doc above:
+        // the official channel delivers every coalesced text block of a turn as an
+        // independent message_state=FINISH with the turn's SHARED run_id and a FRESH
+        // client_id, and never sets msg_id (no item-level PATCH). Multiple FINISH
+        // messages under one run_id therefore render as APPEND, not last-wins. So
+        // sending each chunk as a FINISH with the same run_id is the official-aligned
+        // behavior and is safe: no truncation (append, not replace) and no
+        // duplication (GENERATING fragments are progress, the FINISH chunks are the
+        // authoritative blocks, matching how the official SDK streams text).
         //
-        // For MULTI-chunk replies we deliberately DEGRADE to non-streaming: if we
-        // sent N FINISH items sharing one run_id, last-wins clients would keep only
-        // the last (truncating the reply) while append clients would duplicate the
-        // GENERATING fragments + the full text. Neither is acceptable. So we close
-        // out the streaming turn exactly once with chunk[0] as FINISH, then append
-        // the remaining chunks as ordinary messages (no streaming fields) which all
-        // clients render as plain follow-up messages.
+        // CAVEAT: this is derived from official source, NOT a real-device packet
+        // capture. The previous conservative "first-chunk-FINISH + plain follow-ups"
+        // fallback is preserved below behind WECHAT_STREAM_SAFE_MULTI=1 in case a
+        // future client diverges from the source-derived append semantics.
         if (replyText.trim()) {
           const plainText = markdownToPlaintext(replyText)
           const access = loadAccess()
           const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
           const chunks = chunk(plainText, limit)
+          // Opt-in conservative fallback: only the first chunk uses streaming FINISH,
+          // the rest are plain messages. Off by default (official source confirms
+          // multi-FINISH-same-run_id is append-safe).
+          const safeMulti = (process.env.WECHAT_STREAM_SAFE_MULTI ?? '0') === '1'
 
           for (let i = 0; i < chunks.length; i++) {
             const c = chunks[i]
             if (access.humanDelay && chunks.length > 1) {
               await Bun.sleep(Math.min(c.length * 50, 3000))
             }
-            // Streaming FINISH (with run_id) only for the first chunk, and only
-            // when streaming is enabled. The first FINISH terminates the streaming
-            // turn (last-wins over GENERATING fragments). Any subsequent chunks are
-            // plain messages so multi-chunk replies are never truncated/duplicated.
-            if (STREAMING_ENABLED && i === 0) {
+            // Each chunk is sent as a FINISH carrying the turn's shared run_id
+            // (official-aligned append). When the conservative fallback is enabled,
+            // only chunk[0] is a streaming FINISH and the remainder are plain
+            // messages with no streaming fields.
+            const useStreamFinish = STREAMING_ENABLED && (!safeMulti || i === 0)
+            if (useStreamFinish) {
               await sendStreamFinish(session.userId, c, pending.contextToken, runId)
             } else {
               await sendMessage(session.userId, c, pending.contextToken)

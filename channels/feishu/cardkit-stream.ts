@@ -83,7 +83,10 @@ export class CardkitStreamController {
   private sequence = 1
   private starting: Promise<boolean> | null = null
   private flushTimer: ReturnType<typeof setTimeout> | null = null
-  private flushing: Promise<void> | null = null
+  // A single promise chain that all flushes are serialized onto. Initialized to a
+  // resolved promise so the first flush links cleanly. Never null — every flushNow()
+  // appends a .then(doFlush) so timer-driven and finish()-driven flushes run in order.
+  private flushing: Promise<void> = Promise.resolve()
   private pending = false
   private readonly throttleMs: number
   /** true once any cardkit call fails — caller should fall back. */
@@ -171,10 +174,14 @@ export class CardkitStreamController {
 
   /** Force an immediate incremental push (used internally + at finish). */
   private async flushNow(): Promise<void> {
-    // Serialize flushes so sequence numbers stay strictly increasing on the wire.
-    if (this.flushing) { await this.flushing; }
-    this.flushing = this.doFlush()
-    try { await this.flushing } finally { this.flushing = null }
+    // Chain every flush onto a single promise so doFlush() runs strictly serially.
+    // Both the throttle timer and finish() append here; sequence increments and API
+    // calls (content PUT, settings PATCH) therefore never interleave or reorder.
+    this.flushing = this.flushing.then(() => this.doFlush()).catch((err) => {
+      // Keep the chain alive even if one flush throws unexpectedly.
+      this.log(`cardkit flush error: ${err instanceof Error ? err.message : String(err)}`)
+    })
+    return this.flushing
   }
 
   private async doFlush(): Promise<void> {
@@ -240,6 +247,19 @@ export function streamingEnabled(): boolean {
   const v = process.env.FEISHU_STREAMING
   if (v == null || v === '') return true
   return v !== '0' && v.toLowerCase() !== 'false' && v.toLowerCase() !== 'off'
+}
+
+/**
+ * Whether pseudo-streaming is enabled for MCP Channel mode (server.ts). Default OFF.
+ * Channel-mode replies are produced whole, so feeding them through cardkit only adds
+ * extra API calls (card.create + N×content PUT + settings PATCH) under Feishu's 5 QPS
+ * limit. Opt in explicitly with FEISHU_CHANNEL_PSEUDO_STREAM=1. ACP real streaming
+ * (FEISHU_STREAMING) is unaffected — it has a genuine incremental source.
+ */
+export function pseudoStreamEnabled(): boolean {
+  const v = process.env.FEISHU_CHANNEL_PSEUDO_STREAM
+  if (v == null || v === '') return false
+  return v === '1' || v.toLowerCase() === 'true' || v.toLowerCase() === 'on'
 }
 
 export function streamOptionsFromEnv(overrides: CardkitStreamOptions = {}): CardkitStreamOptions {

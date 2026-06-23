@@ -18,7 +18,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { CardkitStreamController, streamingEnabled, streamOptionsFromEnv } from './cardkit-stream'
+import { CardkitStreamController, pseudoStreamEnabled, streamOptionsFromEnv } from './cardkit-stream'
 
 // Raw foreground mode (--raw flag): skip MCP, use stdout/stdin text transport
 const RAW_MODE = process.argv.includes('--raw')
@@ -732,9 +732,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
         let msgCount = 1
         // Pseudo-streaming (伪流式): render the full reply via a cardkit streaming card so
-        // the client reveals it with a typing cursor. Falls back to format-based send on failure.
+        // the client reveals it with a typing cursor. Disabled by default in Channel mode
+        // (opt in with FEISHU_CHANNEL_PSEUDO_STREAM=1) because the reply is produced whole
+        // and slicing it only adds API calls under Feishu's 5 QPS limit. Falls back to
+        // format-based send on failure.
         let streamedOk = false
-        if (streamingEnabled() && text.trim()) {
+        if (pseudoStreamEnabled() && text.trim()) {
           const sc = new CardkitStreamController(larkClient, chatId, streamOptionsFromEnv({
             log: (m) => process.stderr.write(`feishu server: ${m}\n`),
           }))
