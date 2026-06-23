@@ -10,7 +10,7 @@
  * State lives in ~/.<pandacc|claude>/channels/wechat/
  */
 
-import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
+import { randomBytes, randomUUID, createCipheriv, createDecipheriv } from 'crypto'
 import {
   readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync,
   statSync, renameSync, realpathSync,
@@ -96,6 +96,30 @@ const AGENT_ENV: Record<string, string> = (() => {
 })()
 const MAX_CONCURRENT_USERS = parseInt(process.env.ACP_MAX_USERS ?? '10', 10)
 const IDLE_TIMEOUT_MS = parseInt(process.env.ACP_IDLE_TIMEOUT ?? '86400000', 10) // 24h default
+
+// --- Streaming reply protocol (iLink openclaw-weixin v2.4.5+) ---
+// When enabled, partial assistant output and tool-call lifecycle events are
+// pushed to WeChat in real time using message_state=GENERATING, ending with a
+// final message_state=FINISH. New fields (message_state/run_id/tool_call items)
+// are additive: older iLink backends silently ignore them, so the final FINISH
+// message always arrives intact. Disable with WECHAT_STREAMING=0 to fall back to
+// the single FINISH reply.
+const STREAMING_ENABLED = (process.env.WECHAT_STREAMING ?? '1') !== '0'
+// Throttle: flush accumulated GENERATING text once it reaches this many chars
+// or this many ms since the last push, whichever comes first. Keeps us well
+// under iLink's (undocumented) ~5 QPS budget.
+const STREAM_FLUSH_CHARS = parseInt(process.env.WECHAT_STREAM_CHARS ?? '100', 10)
+const STREAM_FLUSH_MS = parseInt(process.env.WECHAT_STREAM_MS ?? '1000', 10)
+
+// MessageState enum (WeixinMessage.message_state)
+const MSG_STATE_NEW = 0
+const MSG_STATE_GENERATING = 1
+const MSG_STATE_FINISH = 2
+
+// MessageItemType enum (MessageItem.type)
+const ITEM_TYPE_TEXT = 1
+const ITEM_TYPE_TOOL_CALL_START = 11
+const ITEM_TYPE_TOOL_CALL_RESULT = 12
 
 // --- Debug mode ---
 
@@ -527,12 +551,126 @@ async function sendMessage(to: string, text: string, contextToken: string): Prom
       to_user_id: to,
       client_id: `claude-wechat-${Date.now()}-${randomBytes(4).toString('hex')}`,
       message_type: 2,
-      message_state: 2,
-      item_list: [{ type: 1, text_item: { text } }],
+      message_state: MSG_STATE_FINISH,
+      item_list: [{ type: ITEM_TYPE_TEXT, text_item: { text } }],
       context_token: contextToken,
     },
   })
   if (sendResp?.ret === -14 || sendResp?.errcode === -14) {
+    throw new Error('session expired — re-login via /wechat:configure login')
+  }
+}
+
+// --- Streaming reply protocol senders ---
+//
+// These mirror @tencent-weixin/openclaw-weixin v2.4.5 streaming events. All new
+// fields (message_state/run_id + tool_call_*_item) are additive; an older iLink
+// backend that doesn't understand them simply ignores them, so the final FINISH
+// text reply below is always sufficient on its own (graceful degradation).
+
+// A partial text update for the current AI turn. Carries message_state=GENERATING
+// and the shared run_id. is_completed=false marks it as an in-progress item.
+async function sendStreamText(
+  to: string,
+  text: string,
+  contextToken: string,
+  runId: string,
+): Promise<void> {
+  try {
+    const resp = await apiFetch('ilink/bot/sendmessage', {
+      msg: {
+        from_user_id: '',
+        to_user_id: to,
+        client_id: `claude-wechat-${Date.now()}-${randomBytes(4).toString('hex')}`,
+        message_type: 2,
+        message_state: MSG_STATE_GENERATING,
+        run_id: runId,
+        item_list: [{ type: ITEM_TYPE_TEXT, is_completed: false, text_item: { text } }],
+        context_token: contextToken,
+      },
+    })
+    if (resp?.ret === -14 || resp?.errcode === -14) {
+      throw new Error('session expired — re-login via /wechat:configure login')
+    }
+  } catch (err) {
+    // Streaming is best-effort; the final FINISH message is authoritative.
+    process.stderr.write(`wechat acp-bridge: sendStreamText failed: ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
+  }
+}
+
+// Tool-call lifecycle event (start=type 11 / result=type 12). Best-effort.
+async function sendToolCallEvent(
+  to: string,
+  contextToken: string,
+  runId: string,
+  kind: 'start' | 'result',
+  info: { toolName?: string; toolCallId?: string; status?: 'completed' | 'failed' | 'blocked' },
+): Promise<void> {
+  try {
+    const item: any =
+      kind === 'start'
+        ? {
+            type: ITEM_TYPE_TOOL_CALL_START,
+            is_completed: false,
+            tool_call_start_item: {
+              tool_name: info.toolName,
+              tool_call_id: info.toolCallId,
+            },
+          }
+        : {
+            type: ITEM_TYPE_TOOL_CALL_RESULT,
+            is_completed: true,
+            tool_call_result_item: {
+              tool_name: info.toolName,
+              tool_call_id: info.toolCallId,
+              status: info.status,
+            },
+          }
+    const resp = await apiFetch('ilink/bot/sendmessage', {
+      msg: {
+        from_user_id: '',
+        to_user_id: to,
+        client_id: `claude-wechat-${Date.now()}-${randomBytes(4).toString('hex')}`,
+        message_type: 2,
+        message_state: MSG_STATE_GENERATING,
+        run_id: runId,
+        item_list: [item],
+        context_token: contextToken,
+      },
+    })
+    if (resp?.ret === -14 || resp?.errcode === -14) {
+      throw new Error('session expired — re-login via /wechat:configure login')
+    }
+  } catch (err) {
+    process.stderr.write(`wechat acp-bridge: sendToolCallEvent(${kind}) failed: ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
+  }
+}
+
+// Final text reply for a streamed turn: message_state=FINISH + run_id, is_completed=true.
+// IMPORTANT: this relies on the UNVERIFIED ASSUMPTION that the WeChat client treats
+// a FINISH item as last-wins by run_id (replacing the GENERATING fragments shown for
+// the same run_id). This has NOT been validated against a real client. Callers must
+// therefore send AT MOST ONE sendStreamFinish per run_id; multi-chunk replies append
+// the remaining chunks via plain sendMessage to avoid truncation/duplication.
+async function sendStreamFinish(
+  to: string,
+  text: string,
+  contextToken: string,
+  runId: string,
+): Promise<void> {
+  const resp = await apiFetch('ilink/bot/sendmessage', {
+    msg: {
+      from_user_id: '',
+      to_user_id: to,
+      client_id: `claude-wechat-${Date.now()}-${randomBytes(4).toString('hex')}`,
+      message_type: 2,
+      message_state: MSG_STATE_FINISH,
+      run_id: runId,
+      item_list: [{ type: ITEM_TYPE_TEXT, is_completed: true, text_item: { text } }],
+      context_token: contextToken,
+    },
+  })
+  if (resp?.ret === -14 || resp?.errcode === -14) {
     throw new Error('session expired — re-login via /wechat:configure login')
   }
 }
@@ -1013,6 +1151,22 @@ class WeChatAcpClient implements acp.Client {
   private sendTypingFn: () => Promise<void>
   private logFn: (msg: string) => void
 
+  // --- Streaming state (per AI turn) ---
+  // When streaming is active, partial text and tool-call events are pushed to
+  // WeChat in real time via these callbacks. They are no-ops when streaming is
+  // disabled. run_id ties every event of one turn together.
+  private streaming = false
+  private runId = ''
+  private streamTextSink: ((text: string, runId: string) => void) | null = null
+  private streamToolSink:
+    | ((kind: 'start' | 'result', runId: string, info: { toolName?: string; toolCallId?: string; status?: 'completed' | 'failed' | 'blocked' }) => void)
+    | null = null
+  // Throttle buffer for GENERATING text pushes.
+  private pendingStream = ''
+  private lastStreamFlushAt = 0
+  // Remember tool titles by id so tool_call_update can report a friendly name.
+  private toolTitles = new Map<string, string>()
+
   constructor(opts: { sendTyping: () => Promise<void>; log: (msg: string) => void }) {
     this.sendTypingFn = opts.sendTyping
     this.logFn = opts.log
@@ -1020,6 +1174,55 @@ class WeChatAcpClient implements acp.Client {
 
   updateSendTyping(sendTypingFn: () => Promise<void>): void {
     this.sendTypingFn = sendTypingFn
+  }
+
+  // Arm streaming for a new turn. Pass null sinks (or omit) to disable streaming.
+  beginStream(
+    runId: string,
+    textSink: (text: string, runId: string) => void,
+    toolSink: (
+      kind: 'start' | 'result',
+      runId: string,
+      info: { toolName?: string; toolCallId?: string; status?: 'completed' | 'failed' | 'blocked' },
+    ) => void,
+  ): void {
+    this.streaming = true
+    this.runId = runId
+    this.streamTextSink = textSink
+    this.streamToolSink = toolSink
+    this.pendingStream = ''
+    this.lastStreamFlushAt = Date.now()
+    this.toolTitles.clear()
+  }
+
+  // Disarm streaming and flush any buffered partial text. Returns nothing; the
+  // authoritative full text is obtained separately via flush().
+  endStream(): void {
+    if (this.streaming) this.flushStreamBuffer(true)
+    this.streaming = false
+    this.runId = ''
+    this.streamTextSink = null
+    this.streamToolSink = null
+    this.pendingStream = ''
+    this.toolTitles.clear()
+  }
+
+  // Push buffered partial text to WeChat if the throttle threshold is reached
+  // (>= STREAM_FLUSH_CHARS chars or >= STREAM_FLUSH_MS since last push), or when
+  // forced (turn end / tool boundary).
+  private flushStreamBuffer(force: boolean): void {
+    if (!this.streaming || !this.streamTextSink) return
+    if (!this.pendingStream) return
+    const now = Date.now()
+    const due =
+      force ||
+      this.pendingStream.length >= STREAM_FLUSH_CHARS ||
+      now - this.lastStreamFlushAt >= STREAM_FLUSH_MS
+    if (!due) return
+    const text = markdownToPlaintext(this.pendingStream)
+    this.pendingStream = ''
+    this.lastStreamFlushAt = now
+    if (text.trim()) this.streamTextSink(text, this.runId)
   }
 
   async requestPermission(
@@ -1047,12 +1250,26 @@ class WeChatAcpClient implements acp.Client {
       case 'agent_message_chunk':
         if (update.content.type === 'text') {
           this.chunks.push(update.content.text)
+          if (this.streaming) {
+            this.pendingStream += update.content.text
+            this.flushStreamBuffer(false)
+          }
         }
         await this.maybeSendTyping()
         break
 
       case 'tool_call':
         this.logFn(`[tool] ${update.title} (${update.status})`)
+        if (update.toolCallId) this.toolTitles.set(update.toolCallId, update.title)
+        if (this.streaming && this.streamToolSink) {
+          // Flush any buffered text first so the tool event lands after the
+          // text that preceded it.
+          this.flushStreamBuffer(true)
+          this.streamToolSink('start', this.runId, {
+            toolName: update.title,
+            toolCallId: update.toolCallId,
+          })
+        }
         await this.maybeSendTyping()
         break
 
@@ -1075,6 +1292,20 @@ class WeChatAcpClient implements acp.Client {
         }
         if (update.status) {
           this.logFn(`[tool] ${update.toolCallId} → ${update.status}`)
+        }
+        // Emit a TOOL_CALL_RESULT only for terminal statuses.
+        if (
+          this.streaming &&
+          this.streamToolSink &&
+          (update.status === 'completed' || update.status === 'failed')
+        ) {
+          const status: 'completed' | 'failed' =
+            update.status === 'failed' ? 'failed' : 'completed'
+          this.streamToolSink('result', this.runId, {
+            toolName: update.toolCallId ? this.toolTitles.get(update.toolCallId) : undefined,
+            toolCallId: update.toolCallId,
+            status,
+          })
         }
         break
 
@@ -1291,6 +1522,20 @@ async function processQueue(session: UserSession): Promise<void> {
       // Reset chunks for the new turn
       session.client.flush()
 
+      // Arm streaming for this turn (per-turn run_id shared by all events).
+      const runId = randomUUID()
+      if (STREAMING_ENABLED) {
+        session.client.beginStream(
+          runId,
+          (text, rid) => {
+            void sendStreamText(session.userId, text, pending.contextToken, rid)
+          },
+          (kind, rid, info) => {
+            void sendToolCallEvent(session.userId, pending.contextToken, rid, kind, info)
+          },
+        )
+      }
+
       try {
         // Send typing immediately
         sendTyping(session.userId, pending.contextToken).catch(() => {})
@@ -1302,7 +1547,8 @@ async function processQueue(session: UserSession): Promise<void> {
           prompt: pending.prompt,
         })
 
-        // Collect accumulated text
+        // Stop streaming (flushes any buffered partial text) and collect full text
+        if (STREAMING_ENABLED) session.client.endStream()
         let replyText = session.client.flush()
 
         if (result.stopReason === 'cancelled') {
@@ -1313,23 +1559,48 @@ async function processQueue(session: UserSession): Promise<void> {
 
         process.stderr.write(`wechat acp-bridge [${session.userId}]: agent done (${result.stopReason}), reply ${replyText.length} chars\n`)
 
-        // Send reply back to WeChat
+        // Send reply back to WeChat.
+        //
+        // NOTE: the iLink streaming render semantics are an UNVERIFIED ASSUMPTION
+        // (last-wins by run_id: a FINISH item with the turn's run_id replaces the
+        // GENERATING fragments already shown). We have not validated this against a
+        // real WeChat client. Because of that uncertainty we only trust streaming
+        // FINISH for the SINGLE-chunk case, where last-wins safely collapses the
+        // GENERATING fragments into one final message.
+        //
+        // For MULTI-chunk replies we deliberately DEGRADE to non-streaming: if we
+        // sent N FINISH items sharing one run_id, last-wins clients would keep only
+        // the last (truncating the reply) while append clients would duplicate the
+        // GENERATING fragments + the full text. Neither is acceptable. So we close
+        // out the streaming turn exactly once with chunk[0] as FINISH, then append
+        // the remaining chunks as ordinary messages (no streaming fields) which all
+        // clients render as plain follow-up messages.
         if (replyText.trim()) {
           const plainText = markdownToPlaintext(replyText)
           const access = loadAccess()
           const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
           const chunks = chunk(plainText, limit)
 
-          for (const c of chunks) {
+          for (let i = 0; i < chunks.length; i++) {
+            const c = chunks[i]
             if (access.humanDelay && chunks.length > 1) {
               await Bun.sleep(Math.min(c.length * 50, 3000))
             }
-            await sendMessage(session.userId, c, pending.contextToken)
+            // Streaming FINISH (with run_id) only for the first chunk, and only
+            // when streaming is enabled. The first FINISH terminates the streaming
+            // turn (last-wins over GENERATING fragments). Any subsequent chunks are
+            // plain messages so multi-chunk replies are never truncated/duplicated.
+            if (STREAMING_ENABLED && i === 0) {
+              await sendStreamFinish(session.userId, c, pending.contextToken, runId)
+            } else {
+              await sendMessage(session.userId, c, pending.contextToken)
+            }
           }
         }
 
         cancelTyping(session.userId).catch(() => {})
       } catch (err) {
+        if (STREAMING_ENABLED) session.client.endStream()
         process.stderr.write(`wechat acp-bridge [${session.userId}]: agent prompt error: ${err instanceof Error ? err.message : JSON.stringify(err)}\n`)
 
         // Check if agent died

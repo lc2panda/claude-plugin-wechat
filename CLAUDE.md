@@ -2400,3 +2400,77 @@ const proc = spawn(cmd, args, {
 3. **ACP SDK 迁移**：从 deprecated ClientSideConnection/ndJsonStream 迁移到 createAcpClient()，接入 session.cancel()
 4. **（可选）飞书 LarkChannel 迁移**：用官方高层 API 精简 feishu-client.ts 代码量
 
+---
+
+## 16. P2 流式输出体验升级（2026-06-23）
+
+> **实施时间**：2026-06-23（第十一次时间校验锚点）
+> **审批**：Comdr 微信审批通过
+> **状态**：已实现 + 独立验证通过（修复 1 个重要问题）
+
+### 16.1 微信流式回复（channels/wechat/acp-bridge.ts）
+
+实现 iLink v2.4.5 流式回复协议，仅在 ACP 模式生效（MCP Channel 的 reply 工具一次性收到完整文本，无增量来源）。
+
+| 能力 | 实现 |
+|------|------|
+| 增量文本推送 | ACP `agent_message_chunk` → `message_state=GENERATING` + `run_id`，节流批量发送 |
+| 工具调用可见 | `tool_call` → TOOL_CALL_START(type=11)；`tool_call_update` → TOOL_CALL_RESULT(type=12) |
+| 最终消息 | `message_state=FINISH` + 完整全文 |
+| 节流防限频 | 累积 100 字符或 1000ms 先到先发（控 ~5 QPS） |
+
+**关键设计决策（多分块降级）**：iLink 流式渲染语义（last-wins by run_id）是**未经真机验证的假设**。为避免长回复（>2000字符）截断或重复：
+- 单 chunk：走流式 FINISH（last-wins 覆盖 GENERATING 片段）
+- 多 chunk：仅首块用 FINISH 终结流式态，后续块用普通 sendMessage 追加（两种渲染语义下均安全）
+
+**环境变量**：
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `WECHAT_STREAMING` | 1（开启） | 设 0 关闭，回退单次 sendMessage |
+| `WECHAT_STREAM_CHARS` | 100 | GENERATING 累积字符触发阈值 |
+| `WECHAT_STREAM_MS` | 1000 | GENERATING 时间触发阈值 |
+
+### 16.2 飞书 cardkit 流式卡片（channels/feishu/cardkit-stream.ts 新增）
+
+基于飞书 SDK v1.67.0 cardkit/v1 API 实现端到端打字机效果。
+
+| 能力 | 实现 |
+|------|------|
+| 卡片创建 | `cardkit.v1.card.create`（卡片 JSON 含 `config.streaming_config: {print_frequency_ms:70, print_step:1, print_strategy:'fast'}`） |
+| 增量推送 | `cardkit.v1.cardElement.content`（element_id='streaming_md', sequence 单调递增） |
+| 完成 | `cardkit.v1.card.settings` 关闭 streaming_mode |
+| ACP 真流式 | acp-bridge.ts：session/update text chunk 实时镜像到卡片 |
+| Channel 伪流式 | server.ts：完整文本切片喂入（纯 UX，见 P3 优化建议） |
+| 降级 | cardkit 失败 → hasDelivered() 门控 → 回退 plaintext，card/text 互斥不双发 |
+
+**环境变量**：
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `FEISHU_STREAMING` | 开启 | 设 0/false/off 关闭 |
+| `FEISHU_STREAMING_FREQ_MS` | 70 | 打字间隔 |
+| `FEISHU_STREAMING_STEP` | 1 | 每次字符数 |
+| `FEISHU_STREAMING_STRATEGY` | fast | fast/delay |
+
+### 16.3 新增文件特例登记
+
+| 字段 | 值 |
+|------|-----|
+| 触发原因 | cardkit 流式卡片逻辑（创建/增量推送/完成/降级）独立内聚，封装为 CardkitStreamController 类，无法融入现有 server.ts/acp-bridge.ts 而不污染 |
+| 新文件 | channels/feishu/cardkit-stream.ts |
+| 纹身 | ✅ Input/Output/Pos 三行注释齐全 |
+| README 登记 | ✅ channels/feishu/README.md 已登记 |
+| Commit 标签 | [NEW-FILE:#20260623-01] |
+
+### 16.4 独立验证结论
+
+四文件构建全绿（wechat server 207 / wechat acp 93 / feishu server 356 / feishu acp 231 modules，均 exit=0）。
+
+修复的重要问题：微信多分块 FINISH 共享 run_id 截断/重复风险 → 已降级处理。
+
+### 16.5 P3 后续优化项（记入 TODO）
+
+1. 微信流式渲染语义真机抓包验证（last-wins vs append），确认后固化注释
+2. 飞书 cardkit-stream.ts flushNow 改真 promise 链锁（消除 finish-vs-timer 并发窗口）
+3. 飞书 server.ts 伪流式默认关闭或仅长文本启用（避免 3+N API 调用放大）
+4. 统一两端流式开关默认值宽容度（WECHAT_STREAMING 仅判 '0'，FEISHU 含 false/off）
+

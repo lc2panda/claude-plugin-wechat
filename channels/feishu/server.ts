@@ -18,6 +18,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { CardkitStreamController, streamingEnabled, streamOptionsFromEnv } from './cardkit-stream'
 
 // Raw foreground mode (--raw flag): skip MCP, use stdout/stdin text transport
 const RAW_MODE = process.argv.includes('--raw')
@@ -730,27 +731,48 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
 
         let msgCount = 1
-        const format = detectFormat(text)
-        switch (format) {
-          case 'card':
-            // Code blocks / tables → interactive card with markdown component
-            await sendCardMessage(chatId, buildMarkdownCard(text))
-            break
-          case 'post':
-            // Rich text (bold, links, lists) → post format
-            const postContent = { zh_cn: { title: '', content: markdownToPost(text) } }
-            await sendFeishuMessage(chatId, 'post', JSON.stringify(postContent))
-            break
-          case 'text':
-          default: {
-            // Plain text → chunk and send
-            const plainText = markdownToPlaintext(text)
-            const chunks = chunk(plainText, limit)
-            msgCount = chunks.length
-            for (const c of chunks) {
-              await sendTextMessage(chatId, c)
+        // Pseudo-streaming (伪流式): render the full reply via a cardkit streaming card so
+        // the client reveals it with a typing cursor. Falls back to format-based send on failure.
+        let streamedOk = false
+        if (streamingEnabled() && text.trim()) {
+          const sc = new CardkitStreamController(larkClient, chatId, streamOptionsFromEnv({
+            log: (m) => process.stderr.write(`feishu server: ${m}\n`),
+          }))
+          if (await sc.ensureStarted()) {
+            // Push in slices to give a progressive feel; client controls actual typing speed.
+            const SLICE = 24
+            for (let i = 0; i < text.length; i += SLICE) {
+              sc.push(text.slice(i, i + SLICE))
+              if (sc.failed) break
             }
-            break
+            await sc.finish(text)
+            streamedOk = sc.hasDelivered()
+          }
+        }
+
+        if (!streamedOk) {
+          const format = detectFormat(text)
+          switch (format) {
+            case 'card':
+              // Code blocks / tables → interactive card with markdown component
+              await sendCardMessage(chatId, buildMarkdownCard(text))
+              break
+            case 'post':
+              // Rich text (bold, links, lists) → post format
+              const postContent = { zh_cn: { title: '', content: markdownToPost(text) } }
+              await sendFeishuMessage(chatId, 'post', JSON.stringify(postContent))
+              break
+            case 'text':
+            default: {
+              // Plain text → chunk and send
+              const plainText = markdownToPlaintext(text)
+              const chunks = chunk(plainText, limit)
+              msgCount = chunks.length
+              for (const c of chunks) {
+                await sendTextMessage(chatId, c)
+              }
+              break
+            }
           }
         }
 

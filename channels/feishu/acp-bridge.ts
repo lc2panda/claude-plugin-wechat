@@ -22,6 +22,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { Writable, Readable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 import * as Lark from '@larksuiteoapi/node-sdk'
+import { CardkitStreamController, streamingEnabled, streamOptionsFromEnv } from './cardkit-stream'
 
 // --- State directories ---
 
@@ -287,9 +288,16 @@ function chunk(text: string, limit: number): string[] {
 class FeishuAcpClient implements acp.Client {
   private chunks: string[] = []
   private logFn: (msg: string) => void
+  /** Optional live streaming card; when set, chunks are mirrored to it in real time. */
+  private stream: CardkitStreamController | null = null
 
   constructor(opts: { log: (msg: string) => void }) {
     this.logFn = opts.log
+  }
+
+  /** Attach a streaming card for the current prompt turn (null to detach). */
+  setStream(stream: CardkitStreamController | null): void {
+    this.stream = stream
   }
 
   async requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
@@ -303,7 +311,10 @@ class FeishuAcpClient implements acp.Client {
     const update = params.update
     switch (update.sessionUpdate) {
       case 'agent_message_chunk':
-        if (update.content.type === 'text') this.chunks.push(update.content.text)
+        if (update.content.type === 'text') {
+          this.chunks.push(update.content.text)
+          this.stream?.push(update.content.text)
+        }
         break
       case 'tool_call':
         this.logFn(`[tool] ${update.title} (${update.status})`)
@@ -316,7 +327,9 @@ class FeishuAcpClient implements acp.Client {
               const lines: string[] = [`--- ${diff.path}`]
               if (diff.oldText != null) for (const l of diff.oldText.split('\n')) lines.push(`- ${l}`)
               if (diff.newText != null) for (const l of diff.newText.split('\n')) lines.push(`+ ${l}`)
-              this.chunks.push('\n```diff\n' + lines.join('\n') + '\n```\n')
+              const block = '\n```diff\n' + lines.join('\n') + '\n```\n'
+              this.chunks.push(block)
+              this.stream?.push(block)
             }
           }
         }
@@ -463,6 +476,15 @@ async function processQueue(session: UserSession): Promise<void> {
       const pending = session.queue.shift()!
       session.client.flush()
 
+      // Set up a live streaming card for this turn (true typewriter via cardkit/v1).
+      let stream: CardkitStreamController | null = null
+      if (streamingEnabled()) {
+        stream = new CardkitStreamController(larkClient, pending.chatId, streamOptionsFromEnv({
+          log: (m) => process.stderr.write(`feishu acp-bridge [${session.userId}]: ${m}\n`),
+        }))
+        session.client.setStream(stream)
+      }
+
       try {
         const result = await session.connection.prompt({
           sessionId: session.sessionId,
@@ -473,7 +495,15 @@ async function processQueue(session: UserSession): Promise<void> {
         if (result.stopReason === 'cancelled') replyText += '\n[cancelled]'
         else if (result.stopReason === 'refusal') replyText += '\n[agent refused]'
 
-        if (replyText.trim()) {
+        // Finalize the streaming card (push remaining markdown + stop the cursor).
+        if (stream) {
+          await stream.finish(replyText)
+        }
+
+        // If streaming delivered the content, the card already shows it — skip plain text.
+        // Otherwise (streaming disabled / unavailable / nothing delivered), fall back.
+        const streamedOk = stream != null && stream.hasDelivered()
+        if (!streamedOk && replyText.trim()) {
           const plainText = markdownToPlaintext(replyText)
           const access = loadAccess()
           const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
@@ -484,11 +514,14 @@ async function processQueue(session: UserSession): Promise<void> {
         }
       } catch (err) {
         process.stderr.write(`feishu acp-bridge [${session.userId}]: prompt error: ${err}\n`)
+        if (stream) { try { await stream.finish() } catch {} }
         if (session.process.killed || session.process.exitCode !== null) {
           userSessions.delete(session.userId)
           return
         }
         try { await sendTextMessage(pending.chatId, `⚠️ Agent error: ${err instanceof Error ? err.message : JSON.stringify(err)}`) } catch {}
+      } finally {
+        session.client.setStream(null)
       }
     }
   } finally {
