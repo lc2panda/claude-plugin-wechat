@@ -147,6 +147,23 @@
 | **判定** | **通过 ✓** |
 | 备注 | 微信消息触发重启激活；三源互偏差 ≤3 秒；本机时区 Asia/Shanghai (+08:00) |
 
+### 第十一次校验（协议更新例行巡检）
+
+| 项目 | 值 |
+|------|-----|
+| 校验发起 | 2026-06-23 17:22:00 +08:00 |
+| 校验完成 | 2026-06-23 17:22:21 +08:00 |
+| 本机系统时间 | 2026-06-23 17:22:00 +08:00 (Asia/Shanghai, +08:00，等效 Asia/Singapore) |
+| 时间源 1 | Google HTTPS Date → `Tue, 23 Jun 2026 09:22:13 GMT` = 17:22:13 +08:00 |
+| 时间源 2 | Cloudflare HTTPS Date → `Tue, 23 Jun 2026 09:22:16 GMT` = 17:22:16 +08:00 |
+| 时间源 3 | GitHub HTTPS Date → `Tue, 23 Jun 2026 09:22:14 GMT` = 17:22:14 +08:00 |
+| 时间源 4 | Baidu HTTPS Date → `Tue, 23 Jun 2026 09:22:18 GMT` = 17:22:18 +08:00 |
+| 时间源 5 | Microsoft HTTPS Date → `Tue, 23 Jun 2026 09:22:20 GMT` = 17:22:20 +08:00 |
+| 时间源 6 | Apple HTTPS Date → `Tue, 23 Jun 2026 09:22:21 GMT` = 17:22:21 +08:00 |
+| 最大偏差 | 8 秒（Google vs Apple，阈值 100 秒） |
+| **判定** | **通过 ✓** |
+| 备注 | 6 源互偏差 ≤8 秒，本机偏差 13 秒（curl 网络延迟），本时间戳用作协议巡检基准锚点 |
+
 ---
 
 
@@ -2301,4 +2318,85 @@ const proc = spawn(cmd, args, {
 - `skills/feishu-access/SKILL.md` — 5 处路径变量化
 - `README.md` — 完全重构
 - `.mcp.json` — 还原被误改的硬编码路径
+
+---
+
+## 15. 协议更新巡检与同步（2026-06-23）
+
+> **巡检时间**：2026-06-23 17:22:00 +08:00（第十一次时间校验通过后）
+> **巡检范围**：微信 iLink Bot API、飞书/Lark Bot API、ACP/MCP/Claude Code Channel 协议
+> **结论**：三大协议均无 breaking changes，微信 iLink 有重大功能升级（流式回复），飞书推出官方高层 LarkChannel API
+
+### 15.1 版本对比
+
+| 组件 | 上次基准 (2026-06-18) | 当前最新 (2026-06-23) | 变化级别 |
+|------|---------------------|---------------------|---------|
+| @tencent-weixin/openclaw-weixin | 2.4.4 (2026-05-22) | **2.4.6** (2026-06-22) | 新功能 |
+| @larksuiteoapi/node-sdk | 1.67.0 (2026-06-15) | **1.67.0** (2026-06-15) | 无变化 |
+| @agentclientprotocol/sdk | 0.26.0 | **0.29.0** (2026-06-22) | API 重写（旧 API 仍兼容） |
+| @agentclientprotocol/claude-agent-acp | 0.47.0 | **0.49.0** (2026-06-22) | bugfix |
+| @zed-industries/codex-acp | 0.16.0 | **0.16.0** (2026-06-08) | 无变化 |
+| @modelcontextprotocol/sdk | ~1.12.x | **1.29.0** (v1 维护模式) | 无 breaking |
+| Claude Code Channels 协议 | — | 无变化 | — |
+| Codex 插件格式 | — | 无变化 | — |
+
+### 15.2 微信 iLink Bot API 变更明细（v2.4.5/2.4.6）
+
+| # | 变更项 | 级别 | 本项目同步状态 |
+|---|--------|------|--------------|
+| 1 | 新增 notifystart/notifystop 生命周期端点 | 协议合规 | ✅ 已实现（best-effort） |
+| 2 | sync_buf → get_updates_buf 字段重命名 | 协议合规 | ✅ 已提前实现（内存变量 getUpdatesBuf） |
+| 3 | base_info 必填（channel_version + bot_agent） | 协议合规 | ✅ 已实现 + 版本号动态读取 |
+| 4 | iLink-App-Id / iLink-App-ClientVersion 请求头 | 协议合规 | ✅ 已提前实现 + 版本号动态编码 |
+| 5 | CDN URL 服务端 full_url 优先 | 健壮性 | ✅ 已提前实现 |
+| 6 | longpolling_timeout_ms 动态调整 | 协议友好 | ✅ 已提前实现 |
+| 7 | sendMessage 响应 ret 校验 | 健壮性 | ✅ 已实现（关键端点抛错，其他 stderr 记录） |
+| 8 | **流式回复协议**（message_state + run_id + client_id） | 新功能 | ⬜ P2 规划中 |
+| 9 | **工具调用消息类型**（TOOL_CALL_START=11, TOOL_CALL_RESULT=12） | 新功能 | ⬜ P2 规划中 |
+| 10 | 入站 delete_time_ms（消息撤回通知） | 新功能 | ⬜ P2 规划中 |
+| 11 | group_id 字段预留（群聊协议预埋） | 前瞻 | ⬜ 监控中（API 未开放） |
+
+### 15.3 飞书/Lark Bot API 变更明细（v1.60→v1.67）
+
+| # | 变更项 | 级别 | 本项目同步状态 |
+|---|--------|------|--------------|
+| 1 | SDK 升级 1.60.0→1.67.0 | 依赖升级 | ✅ 已升级（无 breaking） |
+| 2 | 官方高层 LarkChannel API | 新 API | ⬜ P2 评估迁移（可精简 ~300 行代码） |
+| 3 | cardkit/v1 流式卡片（打字机效果 70ms 粒度） | 新功能 | ⬜ P2 规划中 |
+| 4 | reaction 表情 ACK | 体验增强 | ⬜ P3 可选 |
+| 5 | Lark 国际版 WebSocket 支持争议解除 | 文档更新 | ✅ 确认稳定可用 |
+| 6 | bot/v3/info 端点新增 | 次要 | ⬜ 无需立即行动 |
+| 7 | /im/v1/messages/reactions/batch_query | 新端点 | ⬜ P3 可选 |
+
+### 15.4 ACP/MCP 生态变更明细
+
+| # | 变更项 | 级别 | 本项目状态 |
+|---|--------|------|-----------|
+| 1 | ACP SDK v0.27+ createAcpClient() 新 API | API 演进 | ⬜ P2 迁移（旧 API 仍可用，deprecated 警告） |
+| 2 | session.cancel() 请求取消 | 新功能 | ⬜ P2 可用于微信/飞书"取消"命令 |
+| 3 | claude-agent-acp v0.49 流式去重 bugfix | bugfix | ✅ npx 自动拉 latest，受益 |
+| 4 | MCP SDK v1.29.0 | 维护版本 | ⬜ 可升级（低优先） |
+| 5 | MCP v2.0.0-alpha | 未来版本 | ⬜ 监控中，不行动 |
+
+### 15.5 本次同步修改清单
+
+**P0 协议合规（已完成）：**
+- `channels/wechat/server.ts`：版本号动态读取 package.json、encodeClientVersion() 位运算编码、injectBaseInfo() 统一注入、apiFetch ret 校验、notifyStart/notifyStop 生命周期函数
+- `channels/wechat/acp-bridge.ts`：同上
+- 版本号硬编码问题修复（原来是 '2.1.9' 和 '1.0.0' 双处不一致）
+
+**依赖升级（已完成）：**
+- `package.json`：@larksuiteoapi/node-sdk ^1.60.0 → ^1.67.0
+- `channels/shared/acp-packages.ts`：版本注释更新到 claude-agent-acp 0.49.0、ACP SDK 0.29.0
+- `bun.lock`：bun install 自动更新
+
+**修复：**
+- `channels/feishu/server.ts:852`：修复换行字面量语法错误
+
+### 15.6 P2 下阶段规划（流式输出体验升级）
+
+1. **微信流式回复**：message_state=GENERATING/FINISH + run_id + client_id，实现微信端实时打字效果 + 工具调用过程可见
+2. **飞书 cardkit 打字机效果**：基于 cardkit/v1 streaming_mode + PUT elements/:id/content 增量推送，70ms 粒度真实流式
+3. **ACP SDK 迁移**：从 deprecated ClientSideConnection/ndJsonStream 迁移到 createAcpClient()，接入 session.cancel()
+4. **（可选）飞书 LarkChannel 迁移**：用官方高层 API 精简 feishu-client.ts 代码量
 

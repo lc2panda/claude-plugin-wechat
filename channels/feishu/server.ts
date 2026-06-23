@@ -849,8 +849,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
 if (RAW_MODE) {
   // --- Raw foreground mode ---
-  process.stderr.write('feishu raw: ready (--raw foreground mode)
-')
+  process.stderr.write('feishu raw: ready (--raw foreground mode)\n')
 
   // Concurrent stdin reader for reply commands
   const stdinForRaw = async () => {

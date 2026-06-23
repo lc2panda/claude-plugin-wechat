@@ -1,6 +1,6 @@
 {
   "name": "claude-plugin-wechat",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Multi-channel Codex/Claude Code plugin — WeChat, Feishu, DingTalk and more",
   "license": "MIT",
   "type": "module",
@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.16.1",
-    "@larksuiteoapi/node-sdk": "^1.60.0",
+    "@larksuiteoapi/node-sdk": "^1.67.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "qrcode-terminal": "^0.12.0",
     "silk-wasm": "^3.6.0",

@@ -28,8 +28,20 @@ import {
   statSync, renameSync, realpathSync,
 } from 'fs'
 import { homedir } from 'os'
-import { join, sep } from 'path'
+import { join, sep, dirname } from 'path'
+import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
+
+// --- Read plugin version from package.json dynamically ---
+function readPluginVersion(): string {
+  try {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json')
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+    return pkg.version || '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
 
 // Raw foreground mode (--raw flag): skip MCP, use stdout/stdin text transport
 const RAW_MODE = process.argv.includes('--raw')
@@ -199,11 +211,19 @@ function randomWechatUin(): string {
 }
 
 // iLink client version header: encode semver as uint32 (major<<16 | minor<<8 | patch)
-// Aligned with @tencent-weixin/openclaw-weixin v2.1.9 api.ts
-const PLUGIN_VERSION = '2.1.9'
-const ILINK_APP_CLIENT_VERSION = String(
-  ((2 & 0xff) << 16) | ((1 & 0xff) << 8) | (9 & 0xff)
-) // "131081"
+// Aligned with @tencent-weixin/openclaw-weixin v2.x api.ts
+const PLUGIN_VERSION = readPluginVersion()
+
+function encodeClientVersion(version: string): number {
+  const parts = version.split('.').map((p) => parseInt(p, 10) || 0)
+  const major = (parts[0] ?? 0) & 0xff
+  const minor = (parts[1] ?? 0) & 0xff
+  const patch = (parts[2] ?? 0) & 0xff
+  return (major << 16) | (minor << 8) | patch
+}
+
+const ILINK_APP_CLIENT_VERSION = String(encodeClientVersion(PLUGIN_VERSION))
+const BOT_AGENT = `claude-plugin-wechat/${PLUGIN_VERSION}`
 
 function buildHeaders(): Record<string, string> {
   return {
@@ -216,9 +236,20 @@ function buildHeaders(): Record<string, string> {
   }
 }
 
-async function apiFetch(endpoint: string, body: object, timeoutMs = 15000): Promise<any> {
+function injectBaseInfo(body: Record<string, unknown>): Record<string, unknown> {
+  if (!body.base_info || typeof body.base_info !== 'object') {
+    body.base_info = { channel_version: PLUGIN_VERSION }
+  } else {
+    (body.base_info as Record<string, unknown>).channel_version = PLUGIN_VERSION
+  }
+  body.bot_agent = BOT_AGENT
+  return body
+}
+
+async function apiFetch(endpoint: string, body: Record<string, unknown>, timeoutMs = 15000): Promise<any> {
   const url = new URL(endpoint, BASE_URL)
-  const bodyStr = JSON.stringify(body)
+  const finalBody = injectBaseInfo(body)
+  const bodyStr = JSON.stringify(finalBody)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -231,10 +262,39 @@ async function apiFetch(endpoint: string, body: object, timeoutMs = 15000): Prom
     clearTimeout(timer)
     const text = await res.text()
     if (!res.ok) throw new Error(`${endpoint} ${res.status}: ${text}`)
-    return JSON.parse(text)
+    const data = JSON.parse(text) as Record<string, unknown>
+    // Unified ret-code validation
+    if (typeof data.ret === 'number' && data.ret !== 0) {
+      const errmsg = typeof data.errmsg === 'string' ? data.errmsg : 'unknown error'
+      const ep = endpoint.split('?')[0]
+      if (ep.endsWith('/sendmessage') || ep.endsWith('/msg/notifystart') || ep.endsWith('/msg/notifystop')) {
+        throw new Error(`iLink API ${ep} returned ret=${data.ret}: ${errmsg}`)
+      }
+      console.error(`[wechat] iLink API ${ep} ret=${data.ret}: ${errmsg}`)
+    }
+    return data
   } catch (err) {
     clearTimeout(timer)
     throw err
+  }
+}
+
+// --- Lifecycle notifications (best-effort, aligned with official SDK) ---
+async function notifyStart(): Promise<void> {
+  try {
+    await apiFetch('/ilink/bot/msg/notifystart', {})
+    process.stderr.write('[wechat] notifyStart sent\n')
+  } catch (err) {
+    process.stderr.write(`[wechat] notifyStart failed (best-effort): ${err instanceof Error ? err.message : String(err)}\n`)
+  }
+}
+
+async function notifyStop(): Promise<void> {
+  try {
+    await apiFetch('/ilink/bot/msg/notifystop', {})
+    process.stderr.write('[wechat] notifyStop sent\n')
+  } catch (err) {
+    process.stderr.write(`[wechat] notifyStop failed (best-effort): ${err instanceof Error ? err.message : String(err)}\n`)
   }
 }
 
@@ -242,7 +302,6 @@ async function getUpdates(buf: string, timeoutMs = 35000): Promise<any> {
   try {
     return await apiFetch('ilink/bot/getupdates', {
       get_updates_buf: buf,
-      base_info: { channel_version: '1.0.0' },
     }, timeoutMs)
   } catch (err: any) {
     if (err?.name === 'AbortError') {
@@ -267,7 +326,6 @@ async function sendMessage(to: string, text: string, contextToken: string): Prom
       item_list: [{ type: 1, text_item: { text } }],
       context_token: contextToken,
     },
-    base_info: { channel_version: '1.0.0' },
   })
   if (sendResp?.ret === -14 || sendResp?.errcode === -14) {
     throw new Error('session expired — re-login via /wechat:configure login')
@@ -281,7 +339,6 @@ async function refreshTypingTicket(contextToken?: string): Promise<string> {
   try {
     const body: any = {
       ilink_user_id: creds.userId ?? '',
-      base_info: { channel_version: '1.0.0' },
     }
     if (contextToken) body.context_token = contextToken
     const resp = await apiFetch('ilink/bot/getconfig', body)
@@ -303,7 +360,6 @@ async function sendTyping(toUserId: string, contextToken: string): Promise<void>
       ilink_user_id: toUserId,
       typing_ticket: ticket,
       status: 1, // 1=TYPING, 2=CANCEL
-      base_info: { channel_version: '1.0.0' },
     })
   } catch (err) {
     process.stderr.write(`wechat channel: sendtyping failed: ${err}\n`)
@@ -318,7 +374,6 @@ async function cancelTyping(toUserId: string): Promise<void> {
       ilink_user_id: toUserId,
       typing_ticket: ticket,
       status: 2,
-      base_info: { channel_version: '1.0.0' },
     })
   } catch {}
 }
@@ -375,7 +430,6 @@ async function uploadMedia(filePath: string, toUserId: string, mediaType: number
     rawfilemd5,
     filesize: encrypted.length,
     aeskey: aesKey.toString('hex'),
-    base_info: { channel_version: '1.0.0' },
   }
 
   // IMAGE (1) and VIDEO (2) types require thumbnail params per v2.1.9 API spec.
@@ -479,7 +533,6 @@ async function sendMediaMessage(to: string, filePath: string, contextToken: stri
       item_list: [item],
       context_token: contextToken,
     },
-    base_info: { channel_version: '1.0.0' },
   })
   if (sendResp?.ret === -14 || sendResp?.errcode === -14) {
     throw new Error('session expired — re-login via /wechat:configure login')
@@ -1116,6 +1169,7 @@ if (RAW_MODE) {
   }
 
   // Run poll loop and stdin reader concurrently
+  notifyStart().catch(() => {})
   pollLoop() // fire-and-forget (runs forever)
   await stdinForRaw()
 } else {
@@ -1280,6 +1334,7 @@ async function pollLoop(): Promise<void> {
 }
 
 if (!RAW_MODE) {
+  notifyStart().catch(() => {})
   pollLoop()
 }
 
@@ -1289,6 +1344,7 @@ function shutdown(reason: string): void {
   if (shuttingDown) return
   shuttingDown = true
   process.stderr.write(`wechat channel: shutting down (${reason})\n`)
+  notifyStop().catch(() => {})
 
   const forceTimer = setTimeout(() => {
     process.stderr.write('wechat channel: force exit after timeout\n')
