@@ -1,543 +1,400 @@
-**此项目的任何功能、架构更新，必须在结束后同步更新相关文档。这是我们契约的一部分。**
-
----
-
 <!--
 # AI Installation Instructions (Machine-Readable)
 
-以下内容供 AI Agent（Claude Code / Codex）自动执行安装和配置。
+This section is for AI agents (Claude Code, Panda CLI / Codex) to autonomously install, configure, and verify this plugin. It is invisible in browser preview.
 
 ---
 
-## 第 0 步 · 环境检测与平台识别
+## Plugin Repository Info
+
+- Repository: https://github.com/lc2panda/claude-plugin-wechat
+- Branch: main
+- Plugin name (marketplace): `wechat`
+- Marketplace source: `lc2panda-plugins` (from `lc2panda/claude-plugin-wechat`)
+- Package name (npm/bun): `claude-plugin-wechat`
+- Version: 2.1.9
+- Channels provided: `wechat` (WeChat/微信) + `feishu` (Feishu/Lark/飞书)
+- Modes: Channel (MCP, full-featured) + ACP (standalone process, multi-agent)
+
+---
+
+## Supported Platforms
+
+| Platform | State directory | Plugin install directory |
+|----------|----------------|-------------------------|
+| Claude Code | `~/.claude/channels/` | `~/.claude/plugins/cache/lc2panda-plugins/wechat/*/` |
+| Panda CLI (Codex) | `~/.pandacc/channels/` | `~/.codex/plugins/cache/lc2panda-plugins/wechat/*/` |
+
+Platform detection: `ls ~/.pandacc 2>/dev/null && echo "Panda CLI" || echo "Claude Code"`
+
+---
+
+## Installation Commands (4 combinations)
+
+### 1. Claude Code + WeChat (Channel mode)
 
 ```bash
-# 检测运行平台
-ls ~/.pandacc 2>/dev/null && echo "Codex" || echo "Claude Code"
-
-# 必须依赖
-which bun || echo "需要 Bun: curl -fsSL https://bun.sh/install | bash"
-```
-
-**状态目录映射：**
-
-| 平台 | 渠道状态目录 | 插件安装目录 |
-|------|-------------|-------------|
-| Codex | `~/.pandacc/channels/` | `~/.codex/plugins/cache/lc2panda-plugins/wechat/*/` |
-| Claude Code | `~/.claude/channels/` | `~/.claude/plugins/cache/lc2panda-plugins/wechat/*/` |
-
----
-
-## `.mcp.json` 平台差异说明
-
-`.mcp.json` 同时服务于 Codex 和 Claude Code 两个平台：
-
-- **Claude Code**：读取项目根目录 `.mcp.json`，通过 `${CLAUDE_PLUGIN_ROOT}` 定位插件目录启动 MCP。
-- **Codex**：通过 `.codex-plugin/plugin.json` 中的 `mcpServers` 字段发现 `.mcp.json`。`${CLAUDE_PLUGIN_ROOT:-.}` 的 shell 兜底语法确保 Codex（无此变量时回退到当前目录）也能正确解析插件路径。
-
-插件安装并重启 Codex 会话后，MCP 服务器自动注册，无需手动配置。
-
-如果 Codex 渠道未自动启动，排查：
-- 是否已**重启 Codex 会话**（插件安装/更新后必须重启，否则新技能/MCP 不生效）
-- `~/.pandacc/channels/wechat/credentials.json` 或 `~/.pandacc/channels/feishu/credentials.json` 是否存在
-- 插件 `plugin.json` 中是否包含 `"mcpServers": "./.mcp.json"` 字段（v2.1.5+）
-
----
-
-**询问用户：**
-1. 需要接入哪个渠道？微信 / 飞书 / 都要？
-2. 使用哪种模式？Channel（插件内直接收发）/ ACP（独立进程，支持多 Agent）？
-
-根据回答，执行对应路径。
-
----
-
-## 渠道模式（Channel Mode）— Claude Code / Codex 通用
-
-### 步骤 1 — 安装插件
-
-```
+# Inside Claude Code session:
 /plugin marketplace add lc2panda/claude-plugin-wechat
+/plugin install wechat@lc2panda-plugins
+/wechat:configure login
+# Then launch with channel enabled:
+claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
+```
+
+### 2. Claude Code + Feishu (Channel mode)
+
+```bash
+# Inside Claude Code session:
+/plugin marketplace add lc2panda/claude-plugin-wechat
+/plugin install wechat@lc2panda-plugins
+/feishu:configure login
+# Then launch with channel enabled:
+claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
+```
+
+### 3. Panda CLI (Codex) + WeChat (Channel mode)
+
+```bash
+# Inside Panda CLI / Codex session:
+/plugin marketplace add lc2panda/claude-plugin-wechat
+/plugin install wechat@lc2panda-plugins
+# Configure login (invoke skill or tell Codex "configure wechat login"):
+/wechat:configure login
+# Restart Codex session — MCP channel auto-starts via plugin.json mcpServers field
+```
+
+### 4. Panda CLI (Codex) + Feishu (Channel mode)
+
+```bash
+# Inside Panda CLI / Codex session:
+/plugin marketplace add lc2panda/claude-plugin-wechat
+/plugin install wechat@lc2panda-plugins
+/feishu:configure login
+# Restart Codex session — MCP channel auto-starts
+```
+
+### ACP Mode (all platforms, all channels)
+
+```bash
+# Install globally:
+bun add -g github:lc2panda/claude-plugin-wechat
+
+# WeChat:
+wechat-acp                      # Default: Claude agent
+ACP_AGENT=codex wechat-acp     # Codex agent
+ACP_AGENT=copilot wechat-acp   # Copilot agent
+ACP_AGENT=gemini wechat-acp    # Gemini agent
+
+# Feishu:
+feishu-acp                      # Default: Claude agent
+ACP_AGENT=codex feishu-acp     # Codex agent
+```
+
+---
+
+## Update Commands
+
+| Mode | Command |
+|------|---------|
+| Channel (Claude Code) | `/plugin marketplace update lc2panda-plugins` then `/plugin install wechat@lc2panda-plugins` then restart Claude Code |
+| Channel (Panda CLI) | `/plugin marketplace update lc2panda-plugins` then `/plugin install wechat@lc2panda-plugins` then restart Codex session |
+| ACP | `bun add -g github:lc2panda/claude-plugin-wechat` then restart wechat-acp / feishu-acp |
+
+---
+
+## Post-Install Configuration
+
+### WeChat credentials
+
+Skill: `/wechat:configure login`
+- Displays QR code in terminal
+- User scans with WeChat on phone and confirms
+- Credentials saved to `<STATE_DIR>/channels/wechat/credentials.json`
+- The scanning WeChat account is auto-allowlisted (no pairing needed)
+
+### Feishu credentials
+
+Skill: `/feishu:configure login`
+- Requires App ID + App Secret from Feishu Open Platform (open.feishu.cn) or Lark Developer (open.larksuite.com)
+- For Lark (international): run `/feishu:configure domain lark` first
+- Required permissions (batch import JSON): `{"scopes":{"tenant":["im:message","im:message.p2p_msg:readonly","im:message.group_at_msg:readonly","im:message:send_as_bot","im:resource"]}}`
+- Event subscription: enable "Long connection" mode, add `im.message.receive_v1`
+- Credentials saved to `<STATE_DIR>/channels/feishu/credentials.json`
+
+---
+
+## Verify Installation Success
+
+1. **Channel mode**: After launching, send a message from WeChat/Feishu. It appears as `<channel source="wechat" ...>` or `<channel source="feishu" ...>` in the Claude/Codex session. Use the `reply` tool to respond.
+2. **ACP mode**: After `wechat-acp` or `feishu-acp` starts without errors and prints "polling..." or "connected", send a message from the IM app. The agent responds automatically.
+3. **Credential check**: `cat <STATE_DIR>/channels/wechat/credentials.json` (or feishu) should contain `bot_token` (wechat) or `app_id` + `app_secret` (feishu).
+
+---
+
+## Common Error Troubleshooting
+
+| Symptom | Solution |
+|---------|----------|
+| `Channels are not currently available` | Use ACP mode instead, or `claude logout` then `claude login` |
+| `credentials required` | Run `/wechat:configure login` or `/feishu:configure login` |
+| Messages not arriving | Claude Code: ensure launch command includes `--dangerously-load-development-channels`; Codex: restart session after install |
+| `user not allowlisted` | Run `/wechat:access pair <code>` or `/feishu:access pair <code>` |
+| Feishu card shows plain text | Enable message card capability in app settings |
+| Feishu long connection fails | Ensure event subscription is set to "Long connection" mode |
+| `bun: command not found` | Install Bun: `curl -fsSL https://bun.sh/install \| bash` |
+| ACP agent fails to start | Ensure `claude` CLI is installed and in PATH; or set `ACP_AGENT_COMMAND` |
+
+---
+
+## MCP Server Configuration (.mcp.json)
+
+Both platforms share the same `.mcp.json`:
+- **Claude Code**: reads `.mcp.json` from plugin root, `${CLAUDE_PLUGIN_ROOT}` resolves to plugin directory
+- **Panda CLI (Codex)**: discovers `.mcp.json` via `.codex-plugin/plugin.json` `mcpServers` field; `${CLAUDE_PLUGIN_ROOT:-.}` falls back to current directory
+
+---
+
+## Skills Reference
+
+| Skill | Channel | Purpose |
+|-------|---------|---------|
+| `/wechat:configure` | WeChat | Login (QR scan), check status |
+| `/wechat:access` | WeChat | Pair users, manage allowlist, set DM policy |
+| `/feishu:configure` | Feishu | Set app credentials, switch domain (feishu/lark), check status |
+| `/feishu:access` | Feishu | Pair users, manage allowlist, set DM policy |
+
+## Tools Reference
+
+| Tool | Channel | Parameters |
+|------|---------|-----------|
+| `reply` | WeChat | `user_id` (required), `text` (required), `context_token` (optional), `files[]` (optional) |
+| `reply` | Feishu | `user_id` (required), `text` (required), `chat_id` (required), `files[]` (optional) |
+| `download_attachment` | Both | `attachment_id` (required) |
+
+-->
+
+# claude-plugin-wechat
+
+**Multi-channel AI messaging bridge** — chat with AI through WeChat and Feishu/Lark.
+
+Supports: **Claude Code** and **Panda CLI (Codex)**
+
+---
+
+## Features
+
+- **Dual channel**: WeChat (微信) + Feishu/Lark (飞书)
+- **Dual mode**: Channel (MCP, full-featured) + ACP (standalone, multi-agent)
+- **Streaming replies**: Real-time typing effect in ACP mode; cardkit streaming for Feishu
+- **Remote permission relay**: Approve/deny Claude Code permission prompts from your phone
+- **Full media**: Text, images, files, voice (SILK to WAV), video
+- **Multi-agent ACP**: Claude, Codex, Copilot, Gemini, Qwen
+- **Access control**: Pairing codes, allowlists, DM policy
+
+---
+
+## Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| [Bun](https://bun.sh) | Required runtime. Install: `curl -fsSL https://bun.sh/install \| bash` |
+| Claude Code v2.1.111+ | For Channel mode. Check: `claude --version` |
+| WeChat account | For WeChat channel (iOS/Android) |
+| Feishu/Lark self-built app | For Feishu channel (App ID + App Secret required) |
+
+---
+
+## Installation
+
+### Channel Mode (full-featured, requires platform login)
+
+Works inside Claude Code or Panda CLI (Codex) sessions.
+
+```bash
+# Step 1: Add marketplace source
+/plugin marketplace add lc2panda/claude-plugin-wechat
+
+# Step 2: Install plugin
 /plugin install wechat@lc2panda-plugins
 ```
 
-找不到 marketplace 时先 `/plugin marketplace update lc2panda/claude-plugin-wechat`。安装后 `/reload-plugins`。
+**Launch (Claude Code):**
+```bash
+claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins
+```
 
-### 步骤 2 — 配置渠道
-
-按用户选择的渠道执行对应配置。
-
----
-
-## 微信 · Channel 模式
-
-### 微信登录 [需人类操作]
-
-检查凭据（根据平台选择目录）：
-- Codex: `cat ~/.pandacc/channels/wechat/credentials.json 2>/dev/null`
-- Claude Code: `cat ~/.claude/channels/wechat/credentials.json 2>/dev/null`
-
-有凭据则跳过。否则告诉用户执行 `/wechat:configure login` — 终端显示二维码，微信扫码，手机确认。
-
-### 启动 [需人类操作]
-
-- **Claude Code**: `claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins`
-- **Codex**: 插件安装后 Codex 通过 `plugin.json` 的 `mcpServers` 字段自动发现并启动 MCP 渠道服务器，无需额外启动参数。通知用户重启 Codex 会话。
-
-### 验证
-
-扫码登录的微信号**自动在白名单中**，无需配对。告诉用户从微信发消息，消息到达后以 `<channel source="wechat" ...>` 格式出现，用 `reply` 工具回复。
-
-其他用户需配对：发消息 → 收到 6 位配对码 → 机主执行 `/wechat:access pair <配对码>`。
+**Launch (Panda CLI / Codex):**
+Restart your Codex session after install. The MCP channel starts automatically.
 
 ---
 
-## 飞书/Lark · Channel 模式
+### ACP Mode (standalone, API Key users, multi-agent)
 
-### 配置凭据 [需人类操作]
-
-检查凭据（根据平台）：
-- Codex: `cat ~/.pandacc/channels/feishu/credentials.json 2>/dev/null`
-- Claude Code: `cat ~/.claude/channels/feishu/credentials.json 2>/dev/null`
-
-有凭据则跳过。否则告诉用户执行 `/feishu:configure login`，输入 App ID 和 App Secret。
-
-如果用户还没有飞书应用，引导：
-1. 飞书开放平台（open.feishu.cn）或 Lark Developer（open.larksuite.com）创建自建应用。Lark 用户需执行 `/feishu:configure domain lark` 切换域名
-2. 权限管理 → 批量导入 JSON：`{"scopes":{"tenant":["im:message","im:message.p2p_msg:readonly","im:message.group_at_msg:readonly","im:message:send_as_bot","im:resource"]}}`
-3. 事件与回调 → 订阅方式 → 使用长连接接收事件 → 添加 `im.message.receive_v1`
-4. 版本管理 → 创建版本 → 发布
-
-### 启动 [需人类操作]
-
-- **Claude Code**: `claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins`
-- **Codex**: 插件安装后自动加载，重启 Codex 会话即可。
-
-此命令同时加载微信和飞书两个渠道。
-
-### 验证
-
-飞书消息以 `<channel source="feishu" user_id="..." chat_id="..." ts="...">` 格式到达。用 `reply` 工具回复，必须传 `chat_id`。
-
-首次用户需配对（同微信机制），配对后自动授权。
-
----
-
-## ACP 模式 — 通用（Claude Code / Codex / Copilot / Gemini / Qwen / Opencode）
-
-ACP 模式启动独立进程，不依赖 Claude Code 或 Codex 会话。支持所有 ACP 兼容 Agent。
-
-### 步骤 1 — 全局安装 [需人类操作]
+Does not require Claude Code or Codex session. Runs as independent process.
 
 ```bash
+# Install globally
 bun add -g github:lc2panda/claude-plugin-wechat
+
+# WeChat
+wechat-acp
+
+# Feishu
+feishu-acp
 ```
 
-### 步骤 2 — 配置渠道
-
-按上述微信/飞书 Channel 模式的凭据配置步骤操作。
-
-### 步骤 3 — 启动 [需人类操作]
-
-**微信：**
+Select agent with `ACP_AGENT` environment variable:
 ```bash
-wechat-acp                          # 默认 Claude agent
-ACP_AGENT=codex wechat-acp          # 使用 Codex agent
-ACP_AGENT=copilot wechat-acp        # 使用 Copilot agent
-ACP_AGENT=gemini wechat-acp         # 使用 Gemini agent
+ACP_AGENT=codex wechat-acp
+ACP_AGENT=copilot wechat-acp
+ACP_AGENT=gemini wechat-acp
 ```
-
-**飞书：**
-```bash
-feishu-acp                          # 默认 Claude agent
-ACP_AGENT=codex feishu-acp          # 使用 Codex agent
-```
-
-**其他启动选项：**
-```bash
-wechat-acp --login                  # 重新扫码登录
-wechat-acp --cwd /项目路径          # 指定工作目录
-```
-
-无凭据时自动弹出二维码登录。
-
-### 步骤 4 — 验证
-
-同 Channel 模式。IM 端发 `/cwd /新路径` 可切换工作目录。
 
 ---
 
-## 更新插件
+## Configuration
 
-| 模式 | 命令 |
+### WeChat
+
+Run `/wechat:configure login` in your Claude Code / Codex session.
+- Terminal displays QR code
+- Scan with WeChat on your phone, confirm login
+- The scanning account is auto-authorized (no pairing needed)
+- Credentials saved to:
+  - Claude Code: `~/.claude/channels/wechat/credentials.json`
+  - Panda CLI: `~/.pandacc/channels/wechat/credentials.json`
+
+### Feishu / Lark
+
+1. Create a self-built app at [Feishu Open Platform](https://open.feishu.cn) or [Lark Developer](https://open.larksuite.com)
+2. Import permissions (batch JSON):
+   ```json
+   {"scopes":{"tenant":["im:message","im:message.p2p_msg:readonly","im:message.group_at_msg:readonly","im:message:send_as_bot","im:resource"]}}
+   ```
+3. Event subscription: select "Long connection" mode, add `im.message.receive_v1`
+4. Create version and publish
+5. Run `/feishu:configure login` and enter App ID + App Secret
+   - Lark users: run `/feishu:configure domain lark` first
+
+Credentials saved to:
+- Claude Code: `~/.claude/channels/feishu/credentials.json`
+- Panda CLI: `~/.pandacc/channels/feishu/credentials.json`
+
+---
+
+## Usage
+
+### Receiving messages
+
+Messages arrive in your session as:
+```
+<channel source="wechat" user_id="..." context_token="..." ts="...">message text</channel>
+<channel source="feishu" user_id="..." chat_id="..." ts="...">message text</channel>
+```
+
+### Replying
+
+Use the `reply` tool:
+- WeChat: pass `user_id` and `text` (context_token optional)
+- Feishu: pass `user_id`, `text`, and `chat_id` (required)
+
+### Access control (pairing)
+
+The scanning/login account is auto-authorized. Other users:
+1. They send a message to the bot
+2. They receive a 6-digit pairing code
+3. You run `/wechat:access pair <code>` or `/feishu:access pair <code>`
+
+### IM-side commands
+
+| Command | Function | Mode |
+|---------|----------|------|
+| `/cwd [path]` | View or switch working directory | ACP |
+| `/toggle-debug` | Toggle debug mode | All |
+| `/echo <text>` | Echo with latency info | All |
+
+---
+
+## Environment Variables
+
+### Streaming (ACP mode)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WECHAT_STREAMING` | on | WeChat ACP streaming toggle. Set `0`/`false`/`off` to disable |
+| `WECHAT_STREAM_CHARS` | 100 | Flush threshold by character count |
+| `WECHAT_STREAM_MS` | 1000 | Flush threshold by time (ms) |
+| `WECHAT_STREAM_SAFE_MULTI` | 0 | Conservative multi-chunk mode (set `1` if client deviates from append semantics) |
+| `FEISHU_STREAMING` | on | Feishu ACP cardkit streaming toggle |
+| `FEISHU_CHANNEL_PSEUDO_STREAM` | off | Feishu Channel pseudo-streaming (set `1` to enable; note 5 QPS limit) |
+| `FEISHU_STREAMING_FREQ_MS` | 70 | Cardkit typewriter refresh interval (ms) |
+| `FEISHU_STREAMING_STEP` | 1 | Cardkit characters per step |
+| `FEISHU_STREAMING_STRATEGY` | fast | Cardkit strategy (`fast` / `delay`) |
+| `FEISHU_STREAM_TOOL_CALLS` | on | Show tool call progress in Feishu cards |
+
+### ACP General
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ACP_AGENT` | claude | Agent selection: `claude` / `codex` / `copilot` / `gemini` |
+| `ACP_AGENT_COMMAND` | (auto) | Custom agent launch command |
+| `ACP_AGENT_ARGS` | (auto) | Custom agent arguments |
+| `ACP_AGENT_CWD` | (auto) | Agent working directory |
+| `ACP_MAX_USERS` | 10 | Max concurrent user sessions |
+| `ACP_IDLE_TIMEOUT` | 24h | Session idle timeout |
+
+---
+
+## Architecture
+
+```
+WeChat User ──→ iLink Bot API (long-poll) ──→ server.ts (MCP) ──→ Claude Code / Codex
+Feishu User ──→ Feishu SDK (WebSocket)    ──→ server.ts (MCP) ──→ Claude Code / Codex
+
+                                          ──→ acp-bridge.ts (ACP) ──→ Any ACP Agent
+```
+
+Key files:
+| File | Role |
 |------|------|
-| Channel（Claude Code） | `/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启 Claude Code |
-| Channel（Codex） | `/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启 Codex |
-| ACP | `bun add -g github:lc2panda/claude-plugin-wechat` → 重启 wechat-acp / feishu-acp |
+| `channels/wechat/server.ts` | WeChat MCP channel server |
+| `channels/wechat/acp-bridge.ts` | WeChat ACP bridge |
+| `channels/feishu/server.ts` | Feishu MCP channel server |
+| `channels/feishu/acp-bridge.ts` | Feishu ACP bridge |
+| `channels/feishu/cardkit-stream.ts` | Feishu cardkit streaming controller |
+| `channels/shared/acp-packages.ts` | ACP agent presets |
 
 ---
 
-## 参考（AI 用）
+## Troubleshooting
 
-### 工具
-
-| 工具 | 渠道 | 参数 |
-|------|------|------|
-| `reply` | 微信 | `user_id`, `text`, `context_token`（可选，v2.1.3+）; `files[]`（可选） |
-| `reply` | 飞书 | `user_id`, `text`, `chat_id`（必填）; `files[]`（可选） |
-| `download_attachment` | 全部 | `attachment_id` |
-
-### 微信协议
-
-- 能力声明：`claude/channel` + `claude/channel/permission`
-- 入站：`notifications/claude/channel` → meta `{user_id, context_token, ts}`
-- 出站：`reply` 工具，`context_token` 可选
-- 权限中继：用户回复 `yes <code>` / `no <code>`
-- Typing：每 5 秒 keepalive，回复后取消，5 分钟安全超时
-- 媒体：AES-128-ECB CDN，13 种图片 + 11 种视频格式
-- 语音：优先 ASR 文本，否则 SILK→WAV 转码
-- 引用消息：`ref_msg` 提取
-
-### 飞书协议
-
-- 能力声明：`claude/channel` + `claude/channel/permission`
-- 入站：`notifications/claude/channel` → meta `{user_id, chat_id, ts}`
-- 出站：`reply` 工具，`chat_id` 必填
-- 权限中继：卡片按钮（i18n_elements + button）+ 文字回退
-- Typing：emoji reaction（Typing 表情），回复后移除
-- 媒体：平台托管（无加密），REST API 上传下载
-- 消息格式：纯文本自动用 text，含 markdown 自动用 post 富文本
-- 群聊：WebSocket 模式下 @机器人 自动触发
-
-### 技能
-
-| 技能 | 渠道 | 用途 |
-|------|------|------|
-| `/wechat:configure` | 微信 | 登录、状态 |
-| `/wechat:access` | 微信 | 配对、白名单、策略 |
-| `/feishu:configure` | 飞书 | 登录、凭据、域名切换 |
-| `/feishu:access` | 飞书 | 配对、白名单、策略 |
-
-### 状态文件
-
-| 平台 | 路径 |
-|------|------|
-| Codex | `~/.pandacc/channels/wechat/credentials.json` |
-| Codex | `~/.pandacc/channels/wechat/access.json` |
-| Codex | `~/.pandacc/channels/feishu/credentials.json` |
-| Codex | `~/.pandacc/channels/feishu/access.json` |
-| Claude Code | `~/.claude/channels/wechat/credentials.json` |
-| Claude Code | `~/.claude/channels/wechat/access.json` |
-| Claude Code | `~/.claude/channels/feishu/credentials.json` |
-| Claude Code | `~/.claude/channels/feishu/access.json` |
-
-### 故障排查
-
-| 现象 | 解决 |
-|------|------|
-| `Channels are not currently available` | 用 ACP 模式，或 `claude logout` → `claude login` |
-| `credentials required` | 微信：`/wechat:configure login` / 飞书：`/feishu:configure login` |
-| 没收到消息 | Claude Code 确认启动命令含 `--dangerously-load-development-channels`；Codex 重启会话 |
-| `user not allowlisted` | `/wechat:access pair <code>` 或 `/feishu:access pair <code>` |
-| 飞书卡片显示纯文本 | 检查应用是否开启消息卡片能力 |
-| 飞书长连接失败 | 检查事件与回调是否选择"使用长连接接收事件" |
-
--->
-# claude-plugin-wechat
-
-<details open>
-<summary><h2>人类看这里</h2></summary>
-
-多渠道 AI 消息桥接 — 通过微信、飞书/Lark 与 AI 对话
-
-支持平台：**Claude Code** / **Codex**
-
-支持：文字、图片、文件、语音、视频、远程权限审批、飞书文档
-
-<img src="docs/wechat-test-screenshot.jpg" alt="WeChat Channel Test" width="300" />
+| Symptom | Solution |
+|---------|----------|
+| `Channels are not currently available` | Use ACP mode, or `claude logout` then `claude login` |
+| `credentials required` | `/wechat:configure login` or `/feishu:configure login` |
+| Messages not arriving | Claude Code: ensure `--dangerously-load-development-channels` in launch command. Codex: restart session |
+| `user not allowlisted` | `/wechat:access pair <code>` or `/feishu:access pair <code>` |
+| Feishu card shows plain text | Enable message card capability in app settings |
+| Feishu long connection fails | Check event subscription is set to "Long connection" mode |
+| `bun: command not found` | `curl -fsSL https://bun.sh/install \| bash` |
+| ACP agent won't start | Ensure `claude` CLI is in PATH; or set `ACP_AGENT_COMMAND` explicitly |
+| WeChat QR expired | Re-run `/wechat:configure login` (auto-refreshes up to 3 times) |
 
 ---
 
-### 选择你的 AI Agent
+## Related Projects
 
-```
-你用什么 AI？
-  ├── Claude Code  ──→ 往下看「Claude Code」
-  └── Codex        ──→ 往下看「Codex」
-```
-
-```
-你的登录方式？
-  ├── claude.ai / codex 账号  ──→ Channel 模式（全功能，远程审批）
-  └── API Key                ──→ ACP 模式（多 Agent：Claude / Copilot / Gemini / Codex / 通义千问）
-```
+- **WeCom (企业微信):** [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)
 
 ---
 
-<details>
-<summary><h3>👇 Claude Code · 微信</h3></summary>
+## Acknowledgments
 
-<details>
-<summary><b>Channel 模式</b>（claude.ai 用户）</summary>
-
-> 前置：[Claude Code](https://claude.ai/claude-code) **v2.1.111+**，claude.ai 登录
-> 检查：`claude --version`，低于请 `claude update`
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 1 安装 | `/plugin marketplace add lc2panda/claude-plugin-wechat` 然后 `/plugin install wechat@lc2panda-plugins` | Claude Code |
-| 2 登录 | `/wechat:configure login` → 微信扫码 → 手机确认 | Claude Code |
-| 3 启动 | `claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins` | 系统终端 |
-| 4 使用 | 扫码的微信号自动授权，直接发消息 | 微信 |
-
-</details>
-
-> **💡 与 Claude Code 的区别：** Codex 不读取项目根目录的 `.mcp.json` 文件——MCP 渠道服务器由 Codex 自动管理。安装完成后只需重启 Codex 会话即可使用，无需命令行参数。
-
-<details>
-<summary><b>ACP 模式</b>（API Key 用户）</summary>
-
-> 前置：[Bun](https://bun.sh)（`curl -fsSL https://bun.sh/install | bash`）
-> `wechat-acp` 会自动在后台启动 AI 引擎，无需手动打开 Claude Code
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 1 安装 | `bun add -g github:lc2panda/claude-plugin-wechat` | 系统终端 |
-| 2 启动 | `wechat-acp`（首次自动弹二维码登录） | 系统终端 |
-| 3 使用 | 直接发消息，`/cwd` 切换项目目录 | 微信 |
-
-</details>
-
-</details>
+Based on [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin). Thanks to the original author.
 
 ---
 
-<details>
-<summary><h3>👇 Codex · 微信</h3></summary>
+## License
 
-<details>
-<summary><b>Channel 模式</b>（codex 账号用户）</summary>
-
-> 前置：[Codex](https://codex.openai.com) 已安装并登录
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 1 安装 | `/plugin marketplace add lc2panda/claude-plugin-wechat` 然后 `/plugin install wechat@lc2panda-plugins` | Codex |
-| 2 登录 | 告诉 Codex 「配置微信登录」 → 显示二维码 → 微信扫码 → 手机确认 | Codex |
-| 3 启动 | 插件安装后自动加载渠道，**重启 Codex 会话**即可 | — |
-| 4 使用 | 扫码的微信号自动授权，直接发消息 | 微信 |
-
-</details>
-
-<details>
-<summary><b>ACP 模式</b>（API Key 用户）</summary>
-
-> 前置：[Bun](https://bun.sh)（`curl -fsSL https://bun.sh/install | bash`）
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 1 安装 | `bun add -g github:lc2panda/claude-plugin-wechat` | 系统终端 |
-| 2 启动 | `ACP_AGENT=codex wechat-acp`（首次自动弹二维码登录） | 系统终端 |
-| 3 使用 | 直接发消息，`/cwd` 切换项目目录 | 微信 |
-
-</details>
-
-<details>
-<summary><b>Raw 前台模式</b>（Codex exec_command 推荐 ⭐）</summary>
-
-> 不依赖 MCP 插件体系，直接用 `exec_command` 在前台运行。消息实时打印到终端。
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 1 启动 | `bun channels/wechat/server.ts --raw` | 终端 / Codex exec_command |
-| 2 收发 | 消息以 `<msg user_id="..." ts="...">text</msg>` 格式出现在 stdout，回复写入 stdin：`<reply user_id="...">text</reply>` | Codex |
-
-> 详细协议和 Codex 交互模式见 [README 开头 AI 指令区](#) 的「Raw 前台模式」章节。
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><h3>👇 Claude Code · 飞书/Lark</h3></summary>
-
-#### 第一步 · 创建应用
-
-- **飞书（国内）：** 打开 [飞书开放平台](https://open.feishu.cn) → 创建自建应用
-- **Lark（国际版）：** 打开 [Lark Developer](https://open.larksuite.com) → 创建自建应用
-
-记下 `App ID` 和 `App Secret`
-
-> Lark 用户在配置凭据时需切换域名：`/feishu:configure domain lark`
-
-#### 第二步 · 导入权限
-
-权限管理 → 批量导入/导出权限 → 粘贴以下 JSON → 确认申请：
-
-```json
-{"scopes":{"tenant":["im:message","im:message.p2p_msg:readonly","im:message.group_at_msg:readonly","im:message:send_as_bot","im:resource"]}}
-```
-
-#### 第三步 · 配置长连接 + 事件
-
-1. 事件与回调 → 订阅方式 → 选择 **「使用长连接接收事件」**
-2. 添加事件：`im.message.receive_v1`
-
-#### 第四步 · 发布
-
-版本管理 → 创建版本 → 发布
-
----
-
-<details>
-<summary><b>Channel 模式</b>（claude.ai 用户）</summary>
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 5 安装 | `/plugin marketplace add lc2panda/claude-plugin-wechat` 然后 `/plugin install wechat@lc2panda-plugins` | Claude Code |
-| 6 凭据 | `/feishu:configure login` → 输入 App ID + App Secret | Claude Code |
-| 7 启动 | `claude --dangerously-skip-permissions --dangerously-load-development-channels plugin:wechat@lc2panda-plugins` | 系统终端 |
-| 8 使用 | 私聊机器人或群聊 @机器人 | 飞书 |
-
-> 此命令同时加载微信和飞书两个渠道（都在同一个插件中）
-
-</details>
-
-<details>
-<summary><b>ACP 模式</b>（API Key 用户）</summary>
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 5 安装 | `bun add -g github:lc2panda/claude-plugin-wechat` | 系统终端 |
-| 6 凭据 | `/feishu:configure login` → 输入 App ID + App Secret | Claude Code |
-| 7 启动 | `feishu-acp` | 系统终端 |
-| 8 使用 | 私聊机器人或群聊 @机器人，`/cwd` 切换目录 | 飞书 |
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><h3>👇 Codex · 飞书/Lark</h3></summary>
-
-> 前置步骤：同上「第一步」到「第四步」创建飞书应用
-
-<details>
-<summary><b>Channel 模式</b>（codex 账号用户）</summary>
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 5 安装 | `/plugin marketplace add lc2panda/claude-plugin-wechat` 然后 `/plugin install wechat@lc2panda-plugins` | Codex |
-| 6 凭据 | 告诉 Codex 「配置飞书」 → 按提示输入 App ID 和 App Secret | Codex |
-| 7 启动 | 插件安装后自动加载渠道，**重启 Codex 会话**即可 | — |
-| 8 使用 | 私聊机器人或群聊 @机器人 | 飞书 |
-
-</details>
-
-<details>
-<summary><b>ACP 模式</b>（API Key 用户）</summary>
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 5 安装 | `bun add -g github:lc2panda/claude-plugin-wechat` | 系统终端 |
-| 6 凭据 | 告诉 Codex 「配置飞书」 → 按提示输入 App ID 和 App Secret | Codex |
-| 7 启动 | `ACP_AGENT=codex feishu-acp` | 系统终端 |
-| 8 使用 | 私聊机器人或群聊 @机器人，`/cwd` 切换目录 | 飞书 |
-
-</details>
-
-<details>
-<summary><b>Raw 前台模式</b>（Codex exec_command 推荐 ⭐）</summary>
-
-> 与微信类似，飞书也支持 `--raw` 前台模式。消息带 `chat_id`。
-
-| 步骤 | 操作 | 在哪 |
-|------|------|------|
-| 1 启动 | `bun channels/feishu/server.ts --raw` | 终端 / Codex exec_command |
-| 2 收发 | stdout: `<msg user_id="..." chat_id="..." ts="...">text</msg>`；stdin: `<reply user_id="..." chat_id="...">text</reply>` | Codex |
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><h3>👇 更新插件</h3></summary>
-
-| 平台/模式 | 命令 |
-|-----------|------|
-| Claude Code · Channel | `/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启 Claude Code |
-| Codex · Channel | `/plugin marketplace update lc2panda-plugins` → `/plugin install wechat@lc2panda-plugins` → 重启 Codex |
-| ACP（微信） | `bun add -g github:lc2panda/claude-plugin-wechat` → 重启 wechat-acp |
-| ACP（飞书） | `bun add -g github:lc2panda/claude-plugin-wechat` → 重启 feishu-acp |
-
-</details>
-
----
-
-<details>
-<summary><h3>IM 端命令</h3></summary>
-
-| 命令 | 作用 | 适用 |
-|------|------|------|
-| `/cwd [路径]` | 查看或切换工作目录 | ACP 模式 |
-| `/toggle-debug` | 切换调试模式 | 全部 |
-| `/echo <文字>` | 回显并显示延迟 | 全部 |
-
-</details>
-
----
-
-<details>
-<summary><h3>环境变量 / Streaming</h3></summary>
-
-流式回复（ACP 模式默认开启，实时打字机效果）：
-
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `WECHAT_STREAMING` | on | 微信 ACP 流式回复开关，设 `0`/`false`/`off` 关闭 |
-| `WECHAT_STREAM_CHARS` | 100 | 流式按字符数刷新阈值 |
-| `WECHAT_STREAM_MS` | 1000 | 流式按时间刷新阈值（毫秒） |
-| `WECHAT_STREAM_SAFE_MULTI` | 0 | 多分块保守流式模式（防客户端渲染语义偏离） |
-| `FEISHU_STREAMING` | on | 飞书 ACP 真流式卡片开关 |
-| `FEISHU_CHANNEL_PSEUDO_STREAM` | 0 | 飞书 Channel 模式伪流式（设 `1` 开启，注意 5 QPS 限制） |
-| `FEISHU_STREAMING_FREQ_MS` | 70 | cardkit 打字机刷新频率（毫秒） |
-| `FEISHU_STREAMING_STEP` | 1 | cardkit 打字机每次步进字符数 |
-| `FEISHU_STREAMING_STRATEGY` | fast | cardkit 打字机策略（`fast`/`delay`） |
-| `FEISHU_STREAM_TOOL_CALLS` | on | 飞书卡片是否显示工具调用过程 |
-
-ACP 通用配置：
-
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `ACP_AGENT` | claude | ACP agent 选择（claude/codex/copilot/gemini） |
-| `ACP_AGENT_COMMAND` | — | 自定义 agent 启动命令 |
-| `ACP_AGENT_ARGS` | — | 自定义 agent 参数 |
-| `ACP_AGENT_CWD` | — | agent 工作目录 |
-| `ACP_MAX_USERS` | 10 | 最大并发用户数 |
-| `ACP_IDLE_TIMEOUT` | 24h | 会话空闲超时 |
-
-> 注：流式回复主要适用于 ACP 模式（有真实增量来源）。MCP Channel 模式（claude.ai 登录）回复为整段生成；飞书 Channel 模式需显式设置 `FEISHU_CHANNEL_PSEUDO_STREAM=1` 才启用伪流式打字机效果。
-
-</details>
-
-### 相关项目
-
-- **企业微信：** [dividduang/claude-plugin-wecom](https://github.com/dividduang/claude-plugin-wecom)
-
-</details>
-
----
-
-## 致谢
-
-本项目基于 [m1heng/claude-plugin-weixin](https://github.com/m1heng/claude-plugin-weixin) 开发，感谢原作者的贡献。
-
----
-
-License: MIT
+MIT
