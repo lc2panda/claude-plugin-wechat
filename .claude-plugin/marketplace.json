@@ -9,7 +9,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/lc2panda/claude-plugin-wechat.git",
-        "sha": "e3875e18ae8bc98a414241a1a8b92f551b846807"
+        "sha": "391847bda8cc53327c277a9dab4bc29b6971617a"
       },
       "description": "Multi-channel Claude Code plugin — WeChat + Feishu/Lark messaging bridge with built-in access control.",
       "version": "2.1.9"
