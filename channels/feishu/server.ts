@@ -32,6 +32,8 @@ import { z } from 'zod'
 // --- State directories ---
 import { existsSync } from 'fs'
 const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
+const IS_CODEX = APP_HOME.endsWith('.pandacc')
+const CHANNEL_PREFIX = (IS_CODEX ? '' : 'claude/') || 'claude/'
 
 const STATE_DIR = join(APP_HOME, 'channels', 'feishu')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -71,21 +73,22 @@ function loadCredentials(): Credentials | null {
 
 const creds = loadCredentials()
 
+let FEISHU_DISABLED = false
 if (!creds?.appId || !creds?.appSecret) {
   process.stderr.write(
-    `feishu channel: credentials required\n` +
+    `feishu channel: credentials not configured — running in degraded mode\n` +
     `  run /feishu:configure in Claude Code to set app_id and app_secret\n`,
   )
-  process.exit(1)
+  FEISHU_DISABLED = true
 }
 
-const DOMAIN = creds.domain === 'lark' ? Lark.Domain.Lark : Lark.Domain.Feishu
+const DOMAIN = FEISHU_DISABLED ? Lark.Domain.Feishu : (creds!.domain === 'lark' ? Lark.Domain.Lark : Lark.Domain.Feishu)
 
 // --- Feishu SDK clients ---
 
-const larkClient = new Lark.Client({
-  appId: creds.appId,
-  appSecret: creds.appSecret,
+const larkClient = FEISHU_DISABLED ? null as any : new Lark.Client({
+  appId: creds!.appId,
+  appSecret: creds!.appSecret,
   domain: DOMAIN,
   appType: Lark.AppType.SelfBuild,
 })
@@ -582,8 +585,8 @@ const mcp = new Server(
   {
     capabilities: {
       experimental: {
-        'claude/channel': {},
-        'claude/channel/permission': {},
+        [CHANNEL_PREFIX + 'channel']: {},
+        [CHANNEL_PREFIX + 'channel/permission']: {},
       },
       tools: {},
     },
@@ -601,7 +604,7 @@ const mcp = new Server(
 // --- Permission relay ---
 
 const PermissionRequestSchema = z.object({
-  method: z.literal('notifications/claude/channel/permission_request'),
+  method: z.literal('notifications/' + CHANNEL_PREFIX + 'channel/permission_request'),
   params: z.object({
     request_id: z.string(),
     tool_name: z.string(),
@@ -718,6 +721,9 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 mcp.setRequestHandler(CallToolRequestSchema, async req => {
   const args = (req.params.arguments ?? {}) as Record<string, unknown>
+  if (FEISHU_DISABLED) {
+    return { content: [{ type: 'text', text: 'Feishu credentials not configured. Run /feishu:configure to set app_id and app_secret.' }] }
+  }
   try {
     switch (req.params.name) {
       case 'reply': {
@@ -874,6 +880,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 // --- Connect transport (MCP or raw) ---
 
 if (RAW_MODE) {
+  if (FEISHU_DISABLED) {
+    process.stderr.write('feishu raw: cannot start — credentials not configured\n')
+  } else {
   // --- Raw foreground mode ---
   process.stderr.write('feishu raw: ready (--raw foreground mode)\n')
 
@@ -915,6 +924,7 @@ if (RAW_MODE) {
 
   // Run stdin reader (polling is handled by feishu SDK internally)
   await stdinForRaw()
+  }
 } else {
   // --- MCP mode (existing code) ---
   await mcp.connect(new StdioServerTransport())
@@ -1081,7 +1091,7 @@ async function handleInbound(data: any): Promise<void> {
   const permMatch = PERMISSION_REPLY_RE.exec(text)
   if (permMatch && !RAW_MODE) {
     await mcp.notification({
-      method: 'notifications/claude/channel/permission',
+      method: 'notifications/' + CHANNEL_PREFIX + 'channel/permission',
       params: {
         request_id: permMatch[2].toLowerCase(),
         behavior: permMatch[1].toLowerCase().startsWith('y') ? 'allow' : 'deny',
@@ -1114,7 +1124,7 @@ ${esc(text)}
 `)
   } else {
     await mcp.notification({
-      method: 'notifications/claude/channel',
+      method: 'notifications/' + CHANNEL_PREFIX + 'channel',
       params: {
         content: text,
         meta: {
@@ -1129,9 +1139,10 @@ ${esc(text)}
 
 // --- Start WebSocket long connection ---
 
+if (!FEISHU_DISABLED) {
 const wsClient = new Lark.WSClient({
-  appId: creds.appId,
-  appSecret: creds.appSecret,
+  appId: creds!.appId,
+  appSecret: creds!.appSecret,
   domain: DOMAIN,
   loggerLevel: Lark.LoggerLevel.info,
 })
@@ -1148,7 +1159,10 @@ wsClient.start({
   }),
 })
 
-process.stderr.write(`feishu channel: WebSocket long connection started (domain=${creds.domain ?? 'feishu'})\n`)
+process.stderr.write(`feishu channel: WebSocket long connection started (domain=${creds!.domain ?? 'feishu'})\n`)
+} else {
+  process.stderr.write('feishu channel: running without WebSocket (no credentials)\n')
+}
 
 // --- Graceful shutdown ---
 

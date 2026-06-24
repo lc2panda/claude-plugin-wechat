@@ -50,7 +50,7 @@ const RAW_MODE = process.argv.includes('--raw')
 import { existsSync } from 'fs'
 const APP_HOME = existsSync(join(homedir(), '.pandacc')) ? join(homedir(), '.pandacc') : join(homedir(), '.claude')
 const IS_CODEX = APP_HOME.endsWith('.pandacc')
-const CHANNEL_PREFIX = IS_CODEX ? '' : 'claude/'
+const CHANNEL_PREFIX = (IS_CODEX ? '' : 'claude/') || 'claude/'
 
 
 // Migrate state from old 'weixin' dir to 'wechat' if needed
@@ -101,16 +101,17 @@ function loadCredentials(): Credentials | null {
 
 const creds = loadCredentials()
 
+let WECHAT_DISABLED = false
 if (!creds?.token || !creds?.baseUrl) {
   process.stderr.write(
-    `wechat channel: credentials required\n` +
+    `wechat channel: credentials not configured — running in degraded mode\n` +
     `  run /wechat:configure in Claude Code to scan QR and login\n`,
   )
-  process.exit(1)
+  WECHAT_DISABLED = true
 }
 
-const TOKEN = creds.token
-const BASE_URL = creds.baseUrl.endsWith('/') ? creds.baseUrl : `${creds.baseUrl}/`
+const TOKEN = WECHAT_DISABLED ? '' : creds!.token
+const BASE_URL = WECHAT_DISABLED ? '' : (creds!.baseUrl.endsWith('/') ? creds!.baseUrl : `${creds!.baseUrl}/`)
 
 // --- Types ---
 
@@ -878,6 +879,9 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 mcp.setRequestHandler(CallToolRequestSchema, async req => {
   const args = (req.params.arguments ?? {}) as Record<string, unknown>
+  if (WECHAT_DISABLED) {
+    return { content: [{ type: 'text', text: 'WeChat credentials not configured. Run /wechat:configure to scan QR and login.' }] }
+  }
   try {
     switch (req.params.name) {
       case 'reply': {
@@ -1169,8 +1173,12 @@ if (RAW_MODE) {
   }
 
   // Run poll loop and stdin reader concurrently
-  notifyStart().catch(() => {})
-  pollLoop() // fire-and-forget (runs forever)
+  if (!WECHAT_DISABLED) {
+    notifyStart().catch(() => {})
+    pollLoop() // fire-and-forget (runs forever)
+  } else {
+    process.stderr.write('wechat raw: running without poll loop (no credentials)\n')
+  }
   await stdinForRaw()
 } else {
   // --- MCP mode (existing code) ---
@@ -1333,7 +1341,7 @@ async function pollLoop(): Promise<void> {
   process.stderr.write('wechat channel: poll loop stopped\n')
 }
 
-if (!RAW_MODE) {
+if (!RAW_MODE && !WECHAT_DISABLED) {
   notifyStart().catch(() => {})
   pollLoop()
 }
