@@ -15,3 +15,4 @@ docs/*.md
 docs/*.html
 docs/dev-*.md
 .DS_Store
+TODO.md
