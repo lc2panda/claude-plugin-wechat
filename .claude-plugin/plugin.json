@@ -1,6 +1,6 @@
 {
   "name": "wechat",
   "description": "WeChat (微信) channel for Claude Code — chat with Claude via WeChat. Supports text, images, files, voice, video, and remote permission relay. Supports streaming replies (real-time output in ACP mode; tool-call progress display; opt-in pseudo-streaming for Feishu cards).",
-  "version": "2.1.10",
+  "version": "3.0.0",
   "keywords": ["codex", "wechat", "weixin", "messaging", "channel", "mcp", "acp"]
 }
