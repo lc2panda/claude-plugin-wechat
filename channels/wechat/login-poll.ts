@@ -144,6 +144,9 @@ while (Date.now() < deadline) {
         baseUrl: resp.baseurl ?? redirectedBase ?? baseUrl,
         accountId: resp.ilink_bot_id,
         userId: resp.ilink_user_id,
+        // 官方 2.3.1 新增字段（非关键路径，用于调试）
+        bindedRedirect: resp.binded_redirect,
+        localTokenList: resp.local_token_list,
       }
 
       saveCredentials(creds)

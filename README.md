@@ -194,6 +194,25 @@ Supports: **Claude Code** and **Panda CLI (Codex)**
 
 ---
 
+## Channel vs ACP Mode Comparison
+
+| Dimension | Channel Mode | ACP Mode |
+|-----------|--------------|----------|
+| **Process Lifecycle** | Persistent MCP connection (child process of Claude Code/Codex session) | Independent subprocess (can run in background) |
+| **Authentication** | claude.ai account (OAuth) | API Key or any Provider |
+| **Always-On** | Requires active Claude Code/Codex session | Can run continuously (e.g., in tmux/screen) |
+| **Permission Relay** | ✅ Remote approval via phone | ✅ Remote approval via phone |
+| **Streaming Output** | Feishu cardkit only (WeChat no streaming API) | ✅ Both channels (real-time chunks) |
+| **Multi-Agent** | Claude Code/Codex only | ✅ Claude, Codex, Copilot, Gemini, Qwen, etc. |
+| **Setup Complexity** | Low (automatic plugin loading) | Medium (manual ACP agent setup) |
+| **Use Case** | Interactive development sessions | Autonomous background tasks, API Key users |
+
+**Which to choose?**
+- **Channel mode**: Default choice if you have claude.ai account and work in interactive sessions
+- **ACP mode**: For API Key users, background automation, or when you need multi-agent support
+
+---
+
 ## Prerequisites
 
 | Requirement | Notes |

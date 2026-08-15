@@ -22,6 +22,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { Writable, Readable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 import * as Lark from '@larksuiteoapi/node-sdk'
+// 注意：package.json 声明 ^1.71.1，实际运行可能升级到 1.73.0（截至 2026-08-14）
+// 核心 API（WSClient、im.v1.message.create、cardkit）在 1.71.x-1.73.x 间保持兼容
 import { CardkitStreamController, streamingEnabled, streamOptionsFromEnv } from './cardkit-stream'
 
 // --- State directories ---
@@ -473,6 +475,8 @@ async function createSession(userId: string, chatId: string): Promise<UserSessio
       proc.stdout!.on('error', (err) => controller.error(err))
     },
   })
+  // 注意：ClientSideConnection 和 ndJsonStream 在 SDK 1.x 中已弃用（新 API 为 createAcpClient），
+  // 但我们锁定 @agentclientprotocol/sdk@0.16.1 以避免双世代分裂，此 API 在 0.16.1 中稳定可用
   const stream = acp.ndJsonStream(input, output)
   const connection = new acp.ClientSideConnection(() => client, stream)
 

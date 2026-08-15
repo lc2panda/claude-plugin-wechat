@@ -473,11 +473,12 @@ function buildHeaders(): Record<string, string> {
 
 function injectBaseInfo(body: Record<string, unknown>): Record<string, unknown> {
   if (!body.base_info || typeof body.base_info !== 'object') {
-    body.base_info = { channel_version: PLUGIN_VERSION }
+    body.base_info = { channel_version: PLUGIN_VERSION, bot_agent: BOT_AGENT }
   } else {
-    (body.base_info as Record<string, unknown>).channel_version = PLUGIN_VERSION
+    const baseInfo = body.base_info as Record<string, unknown>
+    baseInfo.channel_version = PLUGIN_VERSION
+    baseInfo.bot_agent = BOT_AGENT
   }
-  body.bot_agent = BOT_AGENT
   return body
 }
 
@@ -1462,6 +1463,8 @@ async function createSession(userId: string, contextToken: string): Promise<User
       proc.stdout!.on('error', (err) => controller.error(err))
     },
   })
+  // 注意：ClientSideConnection 和 ndJsonStream 在 SDK 1.x 中已弃用（新 API 为 createAcpClient），
+  // 但我们锁定 @agentclientprotocol/sdk@0.16.1 以避免双世代分裂，此 API 在 0.16.1 中稳定可用
   const stream = acp.ndJsonStream(input, output)
   const connection = new acp.ClientSideConnection(() => client, stream)
 

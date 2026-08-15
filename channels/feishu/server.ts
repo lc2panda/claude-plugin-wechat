@@ -17,6 +17,8 @@ import {
 import { homedir } from 'os'
 import { join } from 'path'
 import * as Lark from '@larksuiteoapi/node-sdk'
+// 注意：package.json 声明 ^1.71.1，实际运行可能升级到 1.73.0（截至 2026-08-14）
+// 核心 API（WSClient、im.v1.message.create、cardkit）在 1.71.x-1.73.x 间保持兼容
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CardkitStreamController, pseudoStreamEnabled, streamOptionsFromEnv } from './cardkit-stream'
 

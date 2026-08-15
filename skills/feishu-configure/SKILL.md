@@ -66,6 +66,7 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
    - "3. 添加权限：im:message（获取与发送单聊、群组消息）"
    - "4. 发布应用版本"
    - "然后重启 Claude Code（Codex 用户：重启 Codex 会话）以加载飞书 Channel。"
+   - **Lark 国际版用户注意**：如果 Developer Console 无法配置长连接，这是已知的平台限制。目前需等待飞书官方修复或使用国内版。
 
 ### `domain <feishu|lark>`
 
