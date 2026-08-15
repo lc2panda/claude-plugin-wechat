@@ -10,9 +10,15 @@ package-lock.json
 skills-lock.json
 CLAUDE.md
 
-# docs 目录只允许图片，其余不提交
-docs/*.md
-docs/*.html
-docs/dev-*.md
+# docs 目录（本地协议审查文档，禁止推送）
+docs/
+
 .DS_Store
 TODO.md
+
+# 本地开发环境
+dsh-im-channels/
+
+# 运行时日志
+logs/
+*.log
