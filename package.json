@@ -1,6 +1,6 @@
 {
   "name": "claude-plugin-wechat",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Multi-channel Codex/Claude Code plugin — WeChat, Feishu, DingTalk and more",
   "license": "MIT",
   "type": "module",

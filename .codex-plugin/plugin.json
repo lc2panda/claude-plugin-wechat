@@ -1,6 +1,6 @@
 {
   "name": "wechat",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Multi-channel AI messaging bridge — connect Codex to WeChat (微信) and Feishu/Lark (飞书). Supports text, images, files, voice, video, and remote permission relay via ACP protocol. Supports streaming replies (real-time output in ACP mode; tool-call progress display; opt-in pseudo-streaming for Feishu cards).",
   "author": {
     "name": "lc2panda",

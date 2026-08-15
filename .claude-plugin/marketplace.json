@@ -12,7 +12,7 @@
         "sha": "81a523dd0d38174bef4de4be50a1836693903e75"
       },
       "description": "Multi-channel Claude Code plugin — WeChat + Feishu/Lark messaging bridge with built-in access control.",
-      "version": "3.0.1"
+      "version": "3.0.2"
     }
   ]
 }
